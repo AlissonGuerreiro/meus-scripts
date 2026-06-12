@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Combo de scrips
 // @namespace    http://tampermonkey.net/
-// @version      9.2
+// @version      9.3
 // @description  Script unificado: Ajusta complementar, verifica ferramentas, avisa serviços adicionais. Com trava de Wi-Fi.
 // @author       Alisson Guerreiro / Modo Integrado
 // @match        https://erp.osirnet.com.br/*
@@ -38,7 +38,9 @@
         "FITA ISOLANTE PRETA 20M X 19 MM",
         "BUCHA DE PAREDE 8MM",
         "PARAFUSO PHILIPS 4,0 X 40",
-        "CABO LAN BRANCO"
+        "CABO LAN BRANCO",
+        "ALINHADOR OPTICO APC SIMPLEX",
+        "PROTETOR DE EMENDA"
     ];
 
     const FERRAMENTAS_PROIBIDAS = [
