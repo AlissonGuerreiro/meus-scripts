@@ -5,6 +5,8 @@
 // @description  Script unificado: Ajusta complementar, verifica ferramentas, avisa serviços adicionais.
 // @author       Alisson Guerreiro' / Modo Integrado
 // @match        https://erp.osirnet.com.br/*
+// @updateURL    https://github.com/AlissonGuerreiro/meus-scripts/raw/refs/heads/main/Combo%20de%20scrips-9.0.user.js
+// @downloadURL  https://github.com/AlissonGuerreiro/meus-scripts/raw/refs/heads/main/Combo%20de%20scrips-9.0.user.js
 // @grant        none
 // @run-at       document-end
 // ==/UserScript==
