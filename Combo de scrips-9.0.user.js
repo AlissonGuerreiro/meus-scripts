@@ -1,12 +1,10 @@
 // ==UserScript==
 // @name         Combo de scrips
 // @namespace    http://tampermonkey.net/
-// @version      9.0
-// @description  Script unificado: Ajusta complementar, verifica ferramentas, avisa serviços adicionais.
-// @author       Alisson Guerreiro' / Modo Integrado
+// @version      9.2
+// @description  Script unificado: Ajusta complementar, verifica ferramentas, avisa serviços adicionais. Com trava de Wi-Fi.
+// @author       Alisson Guerreiro / Modo Integrado
 // @match        https://erp.osirnet.com.br/*
-// @updateURL    https://github.com/AlissonGuerreiro/meus-scripts/raw/refs/heads/main/Combo%20de%20scrips-9.0.user.js
-// @downloadURL  https://github.com/AlissonGuerreiro/meus-scripts/raw/refs/heads/main/Combo%20de%20scrips-9.0.user.js
 // @grant        none
 // @run-at       document-end
 // ==/UserScript==
@@ -35,7 +33,7 @@
         "CABO LAN PRETO",
         "CONECTOR RJ45",
         "PARAFUSO SX SOBERBA 1/4",
-        "Parafuso Philips 4mm (Inovação)",
+        "PARAFUSO PHILIPS 4MM (INOVAÇÃO)",
         "PROTETOR CONECTOR OPTICO",
         "FITA ISOLANTE PRETA 20M X 19 MM",
         "BUCHA DE PAREDE 8MM",
@@ -51,7 +49,7 @@
         "ALICATE UNIVERSAL",
         "BADISCO DIGITAL C/ IDENTIFICADOR DE CHAMADAS",
         "PILHA AAA RECARREGÁVEL",
-        "BOLSA PARA FERRAMETNAS 12\" STANDARD 2 BOLSOS - IRWIN",
+        "BOLSA PARA FERRAMENTAS 12\" STANDARD 2 BOLSOS - IRWIN",
         "BOLSA PARA KIT FIBRA",
         "BALDE EM LONA COM FUNDO EM COURO REFORÇADO",
         "BROCA 10MM MADEIRA ENG. RAP.",
@@ -61,8 +59,8 @@
         "BROCA WIDEA DE AÇO RAPIDO SDS PLUS 10MM X 400MM ENG. RAP.",
         "GUIA PASSA FIO PROFISSIONAL ALMA DE AÇO - 20 METROS - KALOP",
         "CANETA LASER TESTADORA DE FIBRA",
-        "CORDÃO ÓPTICO SC/APC -SC/APC 1,5mts ou 3 mts",
-        "CARREGADOR DE PILHAS AA/AAA + 4 PILHAS AA 2500Mah",
+        "CORDÃO ÓPTICO SC/APC -SC/APC 1,5MTS OU 3 MTS",
+        "CARREGADOR DE PILHAS AA/AAA + 4 PILHAS AA 2500MAH",
         "CAVALETE PARA BOBINA DE CABO DROP",
         "PROLONGADOR PARA ROLO EXTENSOR 5MT - VARA DE MANOBRA",
         "CHAVE DE FENDA 3/16\"X 5\" AÇO CROMO 4,7\" X 127",
@@ -75,7 +73,7 @@
         "ESTILETE 18MM",
         "EXTENSÃO ELÉTRICA 20M 10A 2X2,5MM",
         "FUSIMEC",
-        "MALETA PLÁSTICA ORGANIZADORA 431x333x88MM - STANLEY",
+        "MALETA PLÁSTICA ORGANIZADORA 431X333X88MM - STANLEY",
         "MARTELO UNHA 23MM - CABO EM FIBRA",
         "NIVEL DE MADEIRA 14\"",
         "PILHA AA RECARREGAVEL",
@@ -94,8 +92,12 @@
     ];
 
     function normalizarItem(texto) {
-        let textoLimpo = texto.replace(/^\d+\s*-\s*/, "");
-        return textoLimpo.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toUpperCase();
+        if (!texto) return "";
+        let textoLimpo = texto.trim().replace(/^\d+\s*-\s*/, "");
+        return textoLimpo.normalize("NFD")
+                          .replace(/[\u0300-\u036f]/g, "")
+                          .replace(/\s+/g, " ")
+                          .toUpperCase();
     }
 
     const listaPermitidaNormalizada = MATERIAIS_PERMITIDOS.map(normalizarItem);
@@ -105,7 +107,6 @@
     // =========================================================================
     // ESTRUTURAÇÃO DAS INTERFACES VISUAIS (CONTAINERS INJETADOS)
     // =========================================================================
-    // Container Inferior Direito (Alertas de Ativação / SAC N2)
     const alertContainer = document.createElement('div');
     alertContainer.id = 'tm-alerts-container';
     alertContainer.style.cssText = `
@@ -122,7 +123,6 @@
     `;
     document.body.appendChild(alertContainer);
 
-    // Container Superior Direito (Auditor de Materiais de Consumo Interno)
     const auditorContainer = document.createElement('div');
     auditorContainer.id = 'tm-auditor-container';
     auditorContainer.style.cssText = `
@@ -198,6 +198,7 @@
     }
 
     function normalizarTexto(texto) {
+        if (!texto) return "";
         return texto.normalize("NFD")
                     .replace(/[\u0300-\u036f]/g, "")
                     .replace(/[-_.,;:()|]/g, " ")
@@ -265,7 +266,6 @@
 
         let textoAtual = inputInfo.value || "";
 
-        // Limpa MAC se existir
         const inputMac = buscarCampoSmart('mac');
         if (inputMac && inputMac.value.trim() !== '') {
             inputMac.focus();
@@ -307,6 +307,20 @@
         slotVal = (slotVal && !isNaN(slotVal)) ? slotVal.padStart(2, '0') : "XX";
         portaOltVal = (portaOltVal && !isNaN(portaOltVal)) ? portaOltVal.padStart(2, '0') : "XX";
         idOnuVal = (idOnuVal && !isNaN(idOnuVal)) ? idOnuVal.padStart(2, '0') : "XX";
+
+        // =====================================================================
+        // TRAVA DE PROTEÇÃO DO WI-FI (EVITA APAGAR DADOS EXISTENTES)
+        // =====================================================================
+        if (!ssidVal && !passVal) {
+            const regexWifiAntigo = /SSID:\s*([^|_-]+?)\s*-\s*Senha:\s*([^|_\-\n]+)/i;
+            const correspondencia = textoAtual.match(regexWifiAntigo);
+
+            if (correspondencia && correspondencia[1].trim() !== "" && correspondencia[2].trim() !== "") {
+                ssidVal = correspondencia[1].trim();
+                passVal = correspondencia[2].trim();
+            }
+        }
+        // =====================================================================
 
         let equipPrefixo = "Equipamento Desconhecido";
         let autenticacao = "";
@@ -538,20 +552,19 @@
                 if (textoProduto && isNaN(textoProduto) && textoProduto.length > 3 && !textoProduto.toUpperCase().startsWith("TOTAL")) {
                     const itemFormatado = normalizarItem(textoProduto);
 
-                    // Validação de Ferramenta Proibida
-                    if (listaFerramentasNormalizada.some(ferramenta => itemFormatado.includes(ferramenta))) {
+                    let ferramentaEncontrada = listaFerramentasNormalizada.find(ferramenta => itemFormatado === ferramenta || itemFormatado.includes(ferramenta));
+
+                    if (ferramentaEncontrada) {
                         if (!errosItens.some(e => e.item === textoProduto)) {
                             errosItens.push({ item: textoProduto, motivo: "FERRAMENTA DE TÉCNICO! NÃO ALOCAR NO CONSUMO!" });
                         }
                     }
-                    // Validação de Material Não Permitido
                     else if (itemFormatado && !listaPermitidaNormalizada.includes(itemFormatado) && itemFormatado !== "PRODUTO") {
                         if (!errosItens.some(e => e.item === textoProduto)) {
                             errosItens.push({ item: textoProduto, motivo: "NÃO ALOCAR COMO CONSUMO INTERNO!" });
                         }
                     }
 
-                    // Validação de Limite de Cabo Drop
                     if (itemFormatado === CABO_DROP_NORMALIZADO) {
                         const celulaQtd = celulas[2];
                         const pQtd = celulaQtd.querySelector('p');
@@ -573,12 +586,10 @@
         let todosOsErrosItens = [];
         let todosOsErrosQtd = [];
 
-        // Janela Principal
         const resultadoPrincipal = analisarGridMateriais(document);
         todosOsErrosItens = todosOsErrosItens.concat(resultadoPrincipal.errosItens);
         todosOsErrosQtd = todosOsErrosQtd.concat(resultadoPrincipal.errosQtd);
 
-        // iFrames do ERP
         const frames = document.querySelectorAll('iframe');
         frames.forEach(frame => {
             try {
@@ -591,7 +602,6 @@
 
         auditorContainer.innerHTML = "";
 
-        // Injeção de cards filtrados por unicidade
         const errosItensUnicos = todosOsErrosItens.filter((v, i, a) => a.findIndex(t => t.item === v.item) === i);
         errosItensUnicos.forEach(erro => {
             auditorContainer.appendChild(criarCardErroEstoque(erro.item, erro.motivo));
