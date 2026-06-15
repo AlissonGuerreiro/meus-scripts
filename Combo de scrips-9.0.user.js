@@ -1,12 +1,12 @@
 // ==UserScript==
-// @name         Combo de scrips
-// @namespace    http://tampermonkey.net/
-// @version      9.3
-// @description  Script unificado: Ajusta complementar, verifica ferramentas, avisa serviços adicionais. Com trava de Wi-Fi.
-// @author       Alisson Guerreiro / Modo Integrado
-// @match        https://erp.osirnet.com.br/*
-// @grant        none
-// @run-at       document-end
+// @name          Combo de scrips
+// @namespace     http://tampermonkey.net/
+// @version       9.8
+// @description   Script unificado: Ajusta complementar, verifica ferramentas, avisa serviços adicionais. Fluxo inteligente de Wi-Fi e correção de autenticação para Routers.
+// @author        Alisson Guerreiro / Modo Integrado
+// @match         https://erp.osirnet.com.br/*
+// @grant         none
+// @run-at        document-end
 // ==/UserScript==
 
 (function() {
@@ -311,15 +311,28 @@
         idOnuVal = (idOnuVal && !isNaN(idOnuVal)) ? idOnuVal.padStart(2, '0') : "XX";
 
         // =====================================================================
-        // TRAVA DE PROTEÇÃO DO WI-FI (EVITA APAGAR DADOS EXISTENTES)
+        // FLUXO BI-DIRECIONAL DE WI-FI (PUXA DA COMPLEMENTAR SE CAIXAS ESTIVEREM VAZIAS)
         // =====================================================================
-        if (!ssidVal && !passVal) {
-            const regexWifiAntigo = /SSID:\s*([^|_-]+?)\s*-\s*Senha:\s*([^|_\-\n]+)/i;
-            const correspondencia = textoAtual.match(regexWifiAntigo);
+        const regexWifiAntigo = /SSID:\s*([^|_\-\n]+?)\s*-\s*Senha:\s*([^|_\-\n]+)/i;
+        const correspondencia = textoAtual.match(regexWifiAntigo);
 
+        if (!ssidVal && !passVal) {
             if (correspondencia && correspondencia[1].trim() !== "" && correspondencia[2].trim() !== "") {
                 ssidVal = correspondencia[1].trim();
                 passVal = correspondencia[2].trim();
+
+                if (inputWifiSsid) {
+                    inputWifiSsid.focus();
+                    inputWifiSsid.value = ssidVal;
+                    inputWifiSsid.dispatchEvent(new Event('input', { bubbles: true }));
+                    inputWifiSsid.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+                if (inputWifiPass) {
+                    inputWifiPass.focus();
+                    inputWifiPass.value = passVal;
+                    inputWifiPass.dispatchEvent(new Event('input', { bubbles: true }));
+                    inputWifiPass.dispatchEvent(new Event('change', { bubbles: true }));
+                }
             }
         }
         // =====================================================================
@@ -328,15 +341,15 @@
         let autenticacao = "";
         let novaPortaWeb = "80";
 
+        // CORREÇÃO: Routers autenticam neles mesmos (não adiciona nota "Autentica na ZTE")
         if (serialVal.startsWith("RCMG1")) {
             equipPrefixo = "Raisecom Router";
         } else if (serialVal.startsWith("RCMG3")) {
             equipPrefixo = "Raisecom Bridge (Router desativado)";
             autenticacao = "Autentica na ZTE";
         } else if (serialVal.startsWith("48575") || serialVal.startsWith("HWTC")) {
-            equipPrefixo = "Ektech Bridge";
-            autenticacao = "Autentica na ZTE";
-            if (serialVal.startsWith("48575")) novaPortaWeb = "8092";
+            equipPrefixo = "Huawei Router";
+            novaPortaWeb = "80";
         } else if (serialVal.startsWith("5A544") || serialVal.startsWith("ZTEG")) {
             equipPrefixo = "ZTE Bridge";
             autenticacao = "Autentica na ZTE";
@@ -368,21 +381,20 @@
 
         let partesPreservadas = partesAntigas.filter(p => {
             let pMin = p.toLowerCase();
-            let isTecnico = pMin.includes("sn:") ||
-                            pMin.includes("serial:") ||
-                            pMin.includes("slot olt:") ||
-                            pMin.includes("ssid:") ||
-                            pMin.includes("autentica na") ||
-                            pMin.includes("raisecom") ||
-                            pMin.includes("ektech") ||
-                            pMin.includes("ekteck") ||
-                            pMin.includes("zte bridge") ||
-                            pMin.includes("zteg") ||
-                            pMin.includes("equipamento desconhecido") ||
-                            pMin.match(/[a-z0-9-]+\s*-\s*porta(?::)?\s*\d+/i) ||
-                            pMin.includes("xx - porta xx");
-
-            return !isTecnico;
+            return !(pMin.includes("sn:") ||
+                     pMin.includes("serial:") ||
+                     pMin.includes("slot olt:") ||
+                     pMin.includes("ssid:") ||
+                     pMin.includes("autentica na") ||
+                     pMin.includes("raisecom") ||
+                     pMin.includes("ektech") ||
+                     pMin.includes("ekteck") ||
+                     pMin.includes("zte bridge") ||
+                     pMin.includes("zteg") ||
+                     pMin.includes("huawei") ||
+                     pMin.includes("equipamento desconhecido") ||
+                     pMin.match(/[a-z0-9-]+\s*-\s*porta(?::)?\s*\d+/i) ||
+                     pMin.includes("xx - porta xx"));
         });
 
         let textoFinal = partesPreservadas.length > 0 ? partesPreservadas.join(" || ") + " || " + novoBlocoTecnico : novoBlocoTecnico;
@@ -449,6 +461,21 @@
     let ultimaCategoria = null;
     let ultimoTextoOS = "";
 
+    function encontrouVariacao(texto, variacoes) {
+        return variacoes.some(variacao => {
+            if (typeof variacao === "string") {
+                return texto.includes(variacao);
+            }
+            return variacao.test(texto);
+        });
+    }
+
+    const VARIACOES = {
+        wifiPro: ["wifi pro", "wi fi pro", "wifipro", "wifi profissional", /\bwi\sfi\spro\b/],
+        osirmovel: ["osirmovel", "osir movel", /\bosir\s*movel\b/],
+        osirfone: ["osirfone", "osir fone", "telefonia fixa", /\bosir\s*fone\b/]
+    };
+
     function processarAlertas() {
         const inputCategoria = document.getElementById('serviceCategoryId1');
         if (!inputCategoria) {
@@ -502,15 +529,15 @@
         const ehCategoriaAtivacao = categoriasAtivacao.includes(categoriaAtual) || (categoriaAtual !== "" && categoriaAtual.toLowerCase().includes("corporativo")) || categoriaAtual === "";
 
         if (ehCategoriaTroca) {
-            let regexCustoMarcado = /custo[\s\S]*?80\s*00[\s\S]*?\([\s]*x[\s]*\)\s*sim/i.test(textoNormalizado);
+            let regexCustoMarcado = /custo[\s\S]*?80\s*00[\s\S]*?\([\s]*x[\s]*\)\s*sim/.test(textoNormalizado);
             if (regexCustoMarcado) alertContainer.appendChild(criarCardAlerta("⚠️ ENVIAR PARA SAC N2 FAZER A COBRANÇA DE R$ 80,00!", "#ffebee", "#c62828", "#d32f2f"));
         }
 
         if (ehCategoriaAtivacao) {
-            let detectouOsirmovel = textoNormalizado.includes("osirmovel");
-            let detectouWifiPro = textoNormalizado.includes("wi fi pro") || textoNormalizado.includes("wifipro");
-            let detectouTelefonia = textoNormalizado.includes("osirfone") || textoNormalizado.includes("osir fone") || textoNormalizado.includes("telefonia fixa") || /telefonia\s*[\s:]*\([\s]*x[\s]*\)\s*sim/i.test(textoNormalizado);
-            let detectouPortabilidade = /portabilidade\s*[\s:]*\(\s*x\s*\)\s*sim/i.test(textoNormalizado);
+            let detectouOsirmovel = encontrouVariacao(textoNormalizado, VARIACOES.osirmovel);
+            let detectouWifiPro = encontrouVariacao(textoNormalizado, VARIACOES.wifiPro);
+            let detectouTelefonia = encontrouVariacao(textoNormalizado, VARIACOES.osirfone) || /telefonia\s*[\s:]*\([\s]*x[\s]*\)\s*sim/.test(textoNormalizado);
+            let detectouPortabilidade = /portabilidade\s*[\s:]*\(\s*x\s*\)\s*sim/.test(textoNormalizado);
 
             if (detectouOsirmovel) alertContainer.appendChild(criarCardAlerta("📱 OSIRMÓVEL: VERIFICAR SE O CHIP FOI ENTREGUE!", "#fff3e0", "#e65100", "#ff9800"));
             if (detectouWifiPro) alertContainer.appendChild(criarCardAlerta("🌐 WIFI-PRO: VERIFICAR SE FOI INSTALADO!", "#f3e5f5", "#4a148c", "#9c27b0"));
