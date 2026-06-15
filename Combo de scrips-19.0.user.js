@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Combo de scripts - Osirnet (Versão Local Estável)
+// @name         Combo de scripts - Osirnet (Versão Local Estável V19)
 // @namespace    http://tampermonkey.net/
-// @version      16.0
-// @description  Apenas Voalle: Construtor complementar com Lupa, Auditor de Estoque e Notificador. Sem integração externa.
+// @version      19.0
+// @description  Apenas Voalle: Construtor complementar com Lupa, Auditor, Captura reversa de SSID/Senha e Preservação Ordenada de Notas Manuais (Início e Fim).
 // @author       Alisson Guerreiro / Modo Integrado
 // @match        https://erp.osirnet.com.br/*
 // @grant        none
@@ -180,12 +180,37 @@
             if (!inputInfo) return;
 
             let textoAtual = inputInfo.value || "";
+            const botao = document.getElementById('btn-osir-total');
+
+            // --- CAPTURA REVERSA DE SSID E SENHA ---
+            const inputWifiSsid = buscarCampoSmart('wifiSsid');
+            const inputWifiPass = buscarCampoSmart('wifiPass');
+
+            let ssidExtraido = "";
+            let passExtraido = "";
+
+            let matchSSID = textoAtual.match(/SSID:\s*([^-\|]+)/i);
+            if (matchSSID && matchSSID[1].trim() !== "" && matchSSID[1].trim().toUpperCase() !== "XX") {
+                ssidExtraido = matchSSID[1].trim();
+            }
+            let matchPass = textoAtual.match(/Senha:\s*([^-\|]+)/i);
+            if (matchPass && matchPass[1].trim() !== "" && matchPass[1].trim().toUpperCase() !== "XX") {
+                passExtraido = matchPass[1].trim();
+            }
+
+            if (inputWifiSsid && ssidExtraido && (!inputWifiSsid.value || inputWifiSsid.value.trim() === "")) {
+                inputWifiSsid.focus(); inputWifiSsid.value = ssidExtraido;
+                inputWifiSsid.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+            if (inputWifiPass && passExtraido && (!inputWifiPass.value || inputWifiPass.value.trim() === "")) {
+                inputWifiPass.focus(); inputWifiPass.value = passExtraido;
+                inputWifiPass.dispatchEvent(new Event('input', { bubbles: true }));
+            }
 
             const inputMac = buscarCampoSmart('mac');
             if (inputMac && inputMac.value.trim() !== '') {
                 inputMac.focus(); inputMac.value = '';
                 inputMac.dispatchEvent(new Event('input', { bubbles: true }));
-                inputMac.dispatchEvent(new Event('change', { bubbles: true }));
             }
 
             const inputSerial = buscarCampoSmart('serial');
@@ -194,8 +219,6 @@
             const inputSlotOlt = buscarCampoSmart('slotOlt');
             const inputPortaOlt = buscarCampoSmart('portaOlt');
             const inputIdOnu = buscarCampoSmart('idOnu');
-            const inputWifiSsid = buscarCampoSmart('wifiSsid');
-            const inputWifiPass = buscarCampoSmart('wifiPass');
             const inputAccessPointText = buscarCampoSmart('accessPoint');
             const inputPortaWeb = buscarCampoSmart('portaWeb');
 
@@ -206,8 +229,9 @@
             let slotVal = inputSlotOlt ? inputSlotOlt.value.trim() : "";
             let portaOltVal = inputPortaOlt ? inputPortaOlt.value.trim() : "";
             let idOnuVal = inputIdOnu ? inputIdOnu.value.trim() : "";
-            let ssidVal = inputWifiSsid && inputWifiSsid.value.trim() ? inputWifiSsid.value.trim() : "XX";
-            let passVal = inputWifiPass && inputWifiPass.value.trim() ? inputWifiPass.value.trim() : "XX";
+
+            let ssidVal = inputWifiSsid && inputWifiSsid.value.trim() ? inputWifiSsid.value.trim() : (ssidExtraido || "XX");
+            let passVal = inputWifiPass && inputWifiPass.value.trim() ? inputWifiPass.value.trim() : (passExtraido || "XX");
 
             if (inputAccessPointText && inputAccessPointText.value.trim() !== '') {
                 const txtAP = inputAccessPointText.value.trim();
@@ -289,15 +313,58 @@
             blocos.push(`SSID: ${ssidVal} - Senha: ${passVal}`);
 
             let novoBlocoTecnico = blocos.join(" || ");
+
+            // --- FILTRO DE PRESERVAÇÃO ORDENADO (V19) ---
             let partesAntigas = textoAtual.split('||').map(p => p.trim()).filter(p => p !== "");
-            let partesPreservadas = partesAntigas.filter(p => {
+            let notasInicio = [];
+            let notasFim = [];
+
+            partesAntigas.forEach(p => {
                 let pMin = p.toLowerCase();
-                return !(pMin.includes("sn:") || pMin.includes("serial:") || pMin.includes("slot olt:") || pMin.includes("ssid:") || pMin.includes("autentica na") || pMin.includes("raisecom") || pMin.includes("zte bridge") || pMin.includes("zte router") || pMin.includes("huawei") || pMin.includes("ektech") || pMin.includes("equipamento desconhecido") || pMin.includes("roteador mesh") || pMin.match(/[a-z0-9-]+\s*-\s*porta(?::)?\s*\d+/i) || pMin.includes("xx - porta xx"));
+
+                // Se for marcador de plano/tipo de cliente (vai para o início do texto)
+                if (pMin.includes("wifi pro") || pMin.includes("wi-fi pro") || pMin.includes("wifi corporativo")) {
+                    if (!notasInicio.includes(p)) notasInicio.push(p);
+                    return;
+                }
+
+                // Verifica se é uma tag de infraestrutura automática antiga
+                let ehInfraEstrutura = (
+                    pMin.includes("sn:") ||
+                    pMin.includes("serial:") ||
+                    pMin.includes("slot olt:") ||
+                    pMin.includes("porta olt:") ||
+                    pMin.includes("ssid:") ||
+                    pMin.includes("senha:") ||
+                    pMin.includes("autentica na") ||
+                    pMin.includes("autentica no") ||
+                    pMin.includes("raisecom") ||
+                    pMin.includes("zte bridge") ||
+                    pMin.includes("zte router") ||
+                    pMin.includes("huawei") ||
+                    pMin.includes("ektech bridge") ||
+                    pMin.includes("ektech router") ||
+                    pMin.includes("onu bridge") ||
+                    pMin.includes("equipamento desconhecido") ||
+                    pMin.includes("roteador mesh") ||
+                    pMin.match(/[a-z0-9-]+\s*-\s*porta(?::)?\s*\d+/i) ||
+                    pMin.includes("xx - porta xx")
+                );
+
+                // Se não for infraestrutura, é uma observação manual (vai para o fim do texto)
+                if (!ehInfraEstrutura) {
+                    if (!notasFim.includes(p)) notasFim.push(p);
+                }
             });
 
-            let textoFinal = partesPreservadas.length > 0 ? novoBlocoTecnico + " || " + partesPreservadas.join(" || ") : novoBlocoTecnico;
+            // Montagem final do quebra-cabeça na ordem solicitada
+            let elementosFinais = [];
+            if (notasInicio.length > 0) elementosFinais.push(notasInicio.join(" || "));
+            elementosFinais.push(novoBlocoTecnico);
+            if (notasFim.length > 0) elementosFinais.push(notasFim.join(" || "));
 
-            const botao = inputInfo.parentNode ? inputInfo.parentNode.querySelector('#btn-osir-total') : null;
+            let textoFinal = elementosFinais.join(" || ");
+
             if (textoAtual.trim() !== textoFinal.trim()) {
                 inputInfo.focus(); inputInfo.value = textoFinal;
                 inputInfo.dispatchEvent(new Event('input', { bubbles: true }));
@@ -405,7 +472,7 @@
                     let ferramenta = listaFerramentasNormalizada.find(f => itemNorm === f || itemNorm.includes(f));
 
                     if (ferramenta) {
-                        if (!errosItens.some(e => e.item === txtProd)) errosItens.push({ item: txtProd, motivo: "FERRAMENTA DE TÉCNICO! NÃO ALOCAR NO CONSUMO!" });
+                        if (!errosItens.some(e => e.item === txtProd)) errosItens.push({ item: txtProd, motivo: "FERRAMENTA DE TéCNICO! NÃO ALOCAR NO CONSUMO!" });
                     } else if (itemNorm && !listaPermitidaNormalizada.includes(itemNorm) && itemNorm !== "PRODUTO") {
                         if (!errosItens.some(e => e.item === txtProd)) errosItens.push({ item: txtProd, motivo: "NÃO ALOCAR COMO CONSUMO INTERNO!" });
                     }
