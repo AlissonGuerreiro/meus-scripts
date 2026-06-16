@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Chamado
 // @namespace    http://tampermonkey.net/
-// @version      19.1
+// @version      19.2
 // @description  Apenas Voalle: Construtor complementar com Lupa, Auditor, Captura reversa de SSID/Senha e Preservação Ordenada de Notas Manuais (Início e Fim).
 // @author       Alisson Guerreiro / Modo Integrado
 // @match        https://erp.osirnet.com.br/*
@@ -398,12 +398,6 @@
     // MÓDULO 2: NOTIFICADOR (ANÁLISE DE PLANOS E SERVIÇOS CRÍTICOS)
     // =========================================================================
     let ultimaCategoria = null; let ultimoTextoOS = "";
-    const VARIACOES = {
-        wifiPro: ["wifi pro", "wi fi pro", "wifipro", "wifi profissional", /\bwi\sfi\spro\b/],
-        osirmovel: ["osirmovel", "osir movel", /\bosir\s*movel\b/],
-        osirfone: ["osirfone", "osir fone", "telefonia fixa", /\bosir\s*fone\b/]
-    };
-    function encontrouVariacao(texto, variacoes) { return variacoes.some(v => typeof v === "string" ? texto.includes(v) : v.test(texto)); }
 
     function processarAlertas() {
         try {
@@ -433,13 +427,32 @@
             alertContainer.innerHTML = ""; if (!textoOSOriginal.trim()) return;
 
             let txtNorm = normalizarTexto(textoOSOriginal).replace(/https?:\/\/\S+/gi, "").replace(/\S+@\S+\.\S+/gi, "");
+
+            // ✅ DETECÇÃO MAIS RÍGIDA - SÓ MOSTRA SE REALMENTE TIVER
             if (categoryAtual.toLowerCase().includes("troca") && categoryAtual.toLowerCase().includes("ender")) {
-                if (/custo[\s\S]*?80\s*00[\s\S]*?\([\s]*x[\s]*\)\s*sim/.test(txtNorm)) alertContainer.appendChild(criarCardAlerta("⚠️ ENVIAR PARA SAC N2 FAZER A COBRANÇA DE R$ 80,00!", "#ffebee", "#c62828", "#d32f2f"));
+                if (/custo[\s\S]*?80\s*00[\s\S]*?\([\s]*x[\s]*\)\s*sim/.test(txtNorm)) {
+                    alertContainer.appendChild(criarCardAlerta("⚠️ ENVIAR PARA SAC N2 FAZER A COBRANÇA DE R$ 80,00!", "#ffebee", "#c62828", "#d32f2f"));
+                }
             } else {
-                if (encontrouVariacao(txtNorm, VARIACOES.osirmovel)) alertContainer.appendChild(criarCardAlerta("📱 OSIRMÓVEL: VERIFICAR SE O CHIP FOI ENTREGUE!", "#fff3e0", "#e65100", "#ff9800"));
-                if (encontrouVariacao(txtNorm, VARIACOES.wifiPro)) alertContainer.appendChild(criarCardAlerta("🌐 WIFI-PRO: VERIFICAR SE FOI INSTALADO!", "#f3e5f5", "#4a148c", "#9c27b0"));
-                if (encontrouVariacao(txtNorm, VARIACOES.osirfone) || /telefonia\s*[\s:]*\([\s]*x[\s]*\)\s*sim/.test(txtNorm)) alertContainer.appendChild(criarCardAlerta("☎️ TELEFONIA FIXA: VERIFICAR SE FOI INSTALADA!", "#e3f2fd", "#0d47a1", "#1976d2"));
-                if (/portabilidade\s*[\s:]*\(\s*x\s*\)\s*sim/.test(txtNorm)) alertContainer.appendChild(criarCardAlerta("💚 PORTABILIDADE ATIVA: VERIFICAR A PORTABILIDADE!", "#e8f5e9", "#1b5e20", "#4caf50"));
+                // Detecção direta com regex específicas
+                const temWifiPro = /(wifi\s+pro|wi-fi\s+pro|wifipro|wifi\s+profissional)/i.test(txtNorm);
+                const temOsirMovel = /(osir\s*movel|osirmovel)/i.test(txtNorm);
+                const temOsirFone = /(osir\s*fone|osirfone|telefonia\s+fixa)/i.test(txtNorm);
+                const temPortabilidade = /portabilidade\s*\(?\s*x\s*\)?\s*sim/i.test(txtNorm);
+
+                // Só mostra se realmente tiver
+                if (temOsirMovel) {
+                    alertContainer.appendChild(criarCardAlerta("📱 OSIRMÓVEL: VERIFICAR SE O CHIP FOI ENTREGUE!", "#fff3e0", "#e65100", "#ff9800"));
+                }
+                if (temWifiPro) {
+                    alertContainer.appendChild(criarCardAlerta("🌐 WIFI-PRO: VERIFICAR SE FOI INSTALADO!", "#f3e5f5", "#4a148c", "#9c27b0"));
+                }
+                if (temOsirFone) {
+                    alertContainer.appendChild(criarCardAlerta("☎️ TELEFONIA FIXA: VERIFICAR SE FOI INSTALADA!", "#e3f2fd", "#0d47a1", "#1976d2"));
+                }
+                if (temPortabilidade) {
+                    alertContainer.appendChild(criarCardAlerta("💚 PORTABILIDADE ATIVA: VERIFICAR A PORTABILIDADE!", "#e8f5e9", "#1b5e20", "#4caf50"));
+                }
             }
         } catch (err) { console.error("Erro Notificador:", err); }
     }
@@ -523,4 +536,5 @@
     const observador = new MutationObserver(() => { try { processarAlertas(); } catch (e) {} });
     observador.observe(document.body, { childList: true, subtree: true });
     try { processarAlertas(); } catch (e) {}
+
 })();
