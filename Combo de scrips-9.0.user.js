@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Chamado
 // @namespace    http://tampermonkey.net/
-// @version      19.0
+// @version      19.1
 // @description  Apenas Voalle: Construtor complementar com Lupa, Auditor, Captura reversa de SSID/Senha e Preservação Ordenada de Notas Manuais (Início e Fim).
 // @author       Alisson Guerreiro / Modo Integrado
 // @match        https://erp.osirnet.com.br/*
@@ -27,7 +27,7 @@
         "PARAFUSO SX SOBERBA 1/4", "PARAFUSO PHILIPS 4MM (INOVAÇÃO)", "PROTETOR CONECTOR OPTICO",
         "FITA ISOLANTE PRETA 20M X 19 MM", "BUCHA DE PAREDE 8MM", "PARAFUSO PHILIPS 4,0 X 40",
         "CABO LAN BRANCO", "ALINHADOR OPTICO APC SIMPLEX", "PROTETOR DE EMENDA", "SUPA 3",
-        "FITA DE ACO INOX 430 LAMINADO A FRIO LISA 3/4 - 05 MM X 25MTS"
+        "FITA DE ACO INOX 430 LAMINADO A FRIO LISA 3/4 - 05 MM X 25MTS", "PF CHIP RT CB CH PH BC 3,5X25MM"
     ];
 
     const FERRAMENTAS_PROIBIDAS = [
