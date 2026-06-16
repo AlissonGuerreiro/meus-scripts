@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Chamado
 // @namespace    http://tampermonkey.net/
-// @version      20.1
-// @description  Apenas Voalle: Alertas visuais de serviços críticos, cobrança de troca de endereço e auditoria de materiais.
+// @version      19.0
+// @description  Apenas Voalle: Construtor complementar com Lupa, Auditor, Captura reversa de SSID/Senha e Preservação Ordenada de Notas Manuais (Início e Fim).
 // @author       Alisson Guerreiro / Modo Integrado
 // @match        https://erp.osirnet.com.br/*
 // @grant        none
@@ -12,8 +12,11 @@
 (function() {
     'use strict';
 
+    // Memória temporária global para a janela da lupa do Voalle
+    window.lastModalSelection = null;
+
     // =========================================================================
-    // BANCO DE DADOS (MATERIAIS E FERRAMENTAS) - FORMATO LINEAR ANTI-PARSING ERROR
+    // BANCO DE DADOS (MATERIAIS E FERRAMENTAS)
     // =========================================================================
     const MATERIAIS_PERMITIDOS = [
         "CONECTOR FAST SC/APC", "FIXA FIO PRETO UNIDADE", "SUPORTE ORGANIZADOR DE ROTEADOR",
@@ -49,7 +52,9 @@
 
     function normalizarItem(texto) {
         if (!texto) return "";
-        return texto.trim().replace(/^\d+\s*-\s*/, "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").toUpperCase();
+        return texto.trim().replace(/^\d+\s*-\s*/, "")
+                    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+                    .replace(/\s+/g, " ").toUpperCase();
     }
 
     const listaPermitidaNormalizada = MATERIAIS_PERMITIDOS.map(normalizarItem);
@@ -57,7 +62,31 @@
     const CABO_DROP_NORMALIZADO = normalizarItem("CABO ÓPTICO (DROP)");
 
     // =========================================================================
-    // INTERFACES VISUAIS FLUTUANTES
+    // INTERCEPTADOR DA MODAL DO VOALLE (LUPA)
+    // =========================================================================
+    document.addEventListener('click', function(e) {
+        try {
+            const linha = e.target.closest('tr.line, [role="row"], .rt-tr, [id*="datagrid_row" i]');
+            if (!linha) return;
+
+            const celulas = linha.querySelectorAll('td, [role="gridcell"], .rt-td, div[class*="cell" i]');
+            if (celulas.length >= 3) {
+                const txtTitulo = celulas[1].textContent.trim();
+                const txtSerial = celulas[2].textContent.trim();
+
+                if (txtTitulo && txtSerial && !txtTitulo.toUpperCase().startsWith("TOTAL") && txtTitulo.toUpperCase() !== "TÍTULO") {
+                    window.lastModalSelection = {
+                        titulo: txtTitulo.toUpperCase(),
+                        serial: txtSerial.toUpperCase().replace(/\s+/g, "").trim()
+                    };
+                    console.log("Capturado via Lupa:", window.lastModalSelection);
+                }
+            }
+        } catch (err) { console.error("Erro ao ler clique na modal:", err); }
+    }, true);
+
+    // =========================================================================
+    // ESTRUTURAÇÃO DAS INTERFACES VISUAIS (CONTAINERS)
     // =========================================================================
     const alertContainer = document.createElement('div');
     alertContainer.id = 'tm-alerts-container';
@@ -71,22 +100,22 @@
 
     function criarCardAlerta(texto, corFundo, corTexto, corBorda) {
         const card = document.createElement('div');
-        card.style.cssText = "background-color: " + corFundo + "; color: " + corTexto + "; border: 2px solid " + corBorda + "; border-radius: 8px; padding: 12px 15px; font-size: 12px; font-weight: bold; line-height: 1.4; box-shadow: 0px 4px 12px rgba(0,0,0,0.15); text-align: center; text-transform: uppercase; pointer-events: auto;";
+        card.style.cssText = `background-color: ${corFundo}; color: ${corTexto}; border: 2px solid ${corBorda}; border-radius: 8px; padding: 12px 15px; font-size: 12px; font-weight: bold; line-height: 1.4; box-shadow: 0px 4px 12px rgba(0,0,0,0.15); text-align: center; text-transform: uppercase; pointer-events: auto;`;
         card.innerText = texto;
         return card;
     }
 
-    function criarCardErroEstoque(itemIncorreto, motivo) {
+    function criarCardErroEstoque(itemIncorreto, motivo = "NÃO ALOCAR COMO CONSUMO INTERNO!") {
         const card = document.createElement('div');
         card.style.cssText = "background-color: #ffebee; color: #c62828; border: 2px solid #d32f2f; border-radius: 8px; padding: 14px; font-size: 12px; font-weight: bold; line-height: 1.5; box-shadow: 0px 4px 12px rgba(0,0,0,0.2); text-align: center; pointer-events: auto;";
-        card.innerHTML = "⚠️ ATENÇÃO: ITEM FORA DO PADRÃO DETECTADO!<br><span style='color:#000; font-size:13px;'>\"" + itemIncorreto + "\"</span><br>" + (motivo || "NÃO ALOCAR COMO CONSUMO INTERNO!");
+        card.innerHTML = `⚠️ ATENÇÃO: ITEM FORA DO PADRÃO DETECTADO!<br><span style="color:#000; font-size:13px;">"${itemIncorreto}"</span><br>${motivo}`;
         return card;
     }
 
     function criarCardErroQuantidade(item, qtd) {
         const card = document.createElement('div');
         card.style.cssText = "background-color: #fffde7; color: #f57f17; border: 2px solid #fbc02d; border-radius: 8px; padding: 14px; font-size: 12px; font-weight: bold; line-height: 1.5; box-shadow: 0px 4px 12px rgba(0,0,0,0.2); text-align: center; pointer-events: auto;";
-        card.innerHTML = "⚠️ LIMITE EXCEDIDO!<br><span style='color:#000; font-size:13px;'>\"" + item + "\"</span><br>Quantidade alocada: <span style='font-size:14px; color:#e65100;'>" + qtd + " MTS</span><br>O limite do teste é 350 MTS!";
+        card.innerHTML = `⚠️ LIMITE EXCEDIDO!<br><span style="color:#000; font-size:13px;">"${item}"</span><br>Quantidade alocada: <span style="font-size:14px; color:#e65100;">${qtd} MTS</span><br>O limite do teste é 350 MTS!`;
         return card;
     }
 
@@ -96,19 +125,285 @@
     }
 
     // =========================================================================
-    // MÓDULO 1: NOTIFICADOR DE SERVIÇOS E COBRANÇAS
+    // MAPEAMENTO DE CAMPOS SMART DO VOALLE
     // =========================================================================
-    let ultimaCategoria = null;
-    let ultimoTextoOS = "";
+    function buscarCampoSmart(tipo) {
+        const alvos = {
+            complemento: {
+                ids: ['AuthenticationContractComplement', 'OsComplement', 'OsExecution', 'OsLaudo', 'OsObservation', 'ServiceOrderComplement'],
+                names: ['data[AuthenticationContract][complement]', 'data[Os][complemento]', 'data[Os][laudo]', 'data[Os][observacao]', 'data[ServiceOrder][complement]', 'data[ServiceOrder][resolution]'],
+                selectors: ['textarea[id*="complement" i]', 'textarea[id*="laudo" i]', 'textarea[id*="execuc" i]', 'textarea[id*="observa" i]', 'textarea[id*="resolut" i]', 'input[id*="complement" i]']
+            },
+            splitter: { ids: ['AuthenticationSplitterPortTitle'], names: ['data[AuthenticationSplitterPort][title]'], selectors: ['input[id*="splitter" i][id*="title" i]', 'input[id*="splitter" i]', 'select[id*="splitter" i]'] },
+            portaSplitter: { ids: ['AuthenticationSplitterPortPort'], names: ['data[AuthenticationSplitterPort][port]'], selectors: ['input[id*="splitter" i][id*="port" i]', 'input[name*="splitter" i][name*="port" i]'] },
+            slotOlt: { ids: ['AuthenticationContractSlotOlt'], names: ['data[AuthenticationContract][slot_olt]'], selectors: ['input[id*="slot" i]', 'input[name*="slot" i]'] },
+            portaOlt: { ids: ['AuthenticationContractPortOlt'], names: ['data[AuthenticationContract][port_olt]'], selectors: ['input[id*="port_olt" i]', 'input[name*="port_olt" i]'] },
+            idOnu: { ids: ['AuthenticationContractOltId'], names: ['data[AuthenticationContract][olt_id]'], selectors: ['input[id*="olt_id" i]', 'input[id*="onu" i]', 'input[name*="olt_id" i]'] },
+            serial: { ids: ['AuthenticationContractEquipmentSerialNumber'], names: ['data[AuthenticationContract][equipment_serial_number]'], selectors: ['input[id*="serial" i]', 'input[id*="equipment" i]', 'input[name*="serial" i]'] },
+            mac: { ids: ['AuthenticationContractMac'], names: ['data[AuthenticationContract][mac]'], selectors: ['input[id*="mac" i]', 'input[name*="mac" i]'] },
+            wifiSsid: { ids: ['AuthenticationContractWifiName'], names: ['data[AuthenticationContract][wifi_name]'], selectors: ['input[id*="wifi" i][id*="name" i]', 'input[id*="ssid" i]', 'input[name*="wifi_name" i]'] },
+            wifiPass: { ids: ['AuthenticationContractWifiPassword'], names: ['data[AuthenticationContract][wifi_password]'], selectors: ['input[id*="wifi" i][id*="pass" i]', 'input[id*="senha" i]', 'input[name*="wifi_password" i]'] },
+            accessPoint: { ids: ['AuthenticationContractAccessPointId'], names: ['data[AuthenticationContract][access_point_id]'], selectors: ['input[name*="access_point" i]', 'input[id*="AccessPoint" i]'] },
+            portaWeb: { ids: ['AuthenticationContractEquipmentPort'], names: ['data[AuthenticationContract][equipment_port]'], selectors: ['input[id*="equipment_port" i]', 'input[name*="equipment_port" i]'] }
+        };
+
+        const config = alvos[tipo];
+        if (!config) return null;
+
+        function testarNoDocumento(doc) {
+            for (let id of config.ids) { let el = doc.getElementById(id); if (el) return el; }
+            for (let name of config.names) { let el = doc.querySelector(`[name="${name}"]`); if (el) return el; }
+            for (let sel of config.selectors) { let el = doc.querySelector(sel); if (el) return el; }
+            return null;
+        }
+
+        let elemento = testarNoDocumento(document);
+        if (elemento) return elemento;
+
+        const frames = document.querySelectorAll('iframe');
+        for (let frame of frames) {
+            try {
+                const docFrame = frame.contentDocument || frame.contentWindow.document;
+                elemento = testarNoDocumento(docFrame);
+                if (elemento) return elemento;
+            } catch (e) {}
+        }
+        return null;
+    }
+
+    // =========================================================================
+    // MÓDULO 1: AUXILIAR TÉCNICO (CONSTRUTOR DE COMPLEMENTAR LOCAL)
+    // =========================================================================
+    function executarAutomacaoOficial() {
+        try {
+            const inputInfo = buscarCampoSmart('complemento');
+            if (!inputInfo) return;
+
+            let textoAtual = inputInfo.value || "";
+            const botao = document.getElementById('btn-osir-total');
+
+            // --- CAPTURA REVERSA DE SSID E SENHA ---
+            const inputWifiSsid = buscarCampoSmart('wifiSsid');
+            const inputWifiPass = buscarCampoSmart('wifiPass');
+
+            let ssidExtraido = "";
+            let passExtraido = "";
+
+            let matchSSID = textoAtual.match(/SSID:\s*([^-\|]+)/i);
+            if (matchSSID && matchSSID[1].trim() !== "" && matchSSID[1].trim().toUpperCase() !== "XX") {
+                ssidExtraido = matchSSID[1].trim();
+            }
+            let matchPass = textoAtual.match(/Senha:\s*([^-\|]+)/i);
+            if (matchPass && matchPass[1].trim() !== "" && matchPass[1].trim().toUpperCase() !== "XX") {
+                passExtraido = matchPass[1].trim();
+            }
+
+            if (inputWifiSsid && ssidExtraido && (!inputWifiSsid.value || inputWifiSsid.value.trim() === "")) {
+                inputWifiSsid.focus(); inputWifiSsid.value = ssidExtraido;
+                inputWifiSsid.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+            if (inputWifiPass && passExtraido && (!inputWifiPass.value || inputWifiPass.value.trim() === "")) {
+                inputWifiPass.focus(); inputWifiPass.value = passExtraido;
+                inputWifiPass.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+
+            const inputMac = buscarCampoSmart('mac');
+            if (inputMac && inputMac.value.trim() !== '') {
+                inputMac.focus(); inputMac.value = '';
+                inputMac.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+
+            const inputSerial = buscarCampoSmart('serial');
+            const inputSplitter = buscarCampoSmart('splitter');
+            const inputPorta = buscarCampoSmart('portaSplitter');
+            const inputSlotOlt = buscarCampoSmart('slotOlt');
+            const inputPortaOlt = buscarCampoSmart('portaOlt');
+            const inputIdOnu = buscarCampoSmart('idOnu');
+            const inputAccessPointText = buscarCampoSmart('accessPoint');
+            const inputPortaWeb = buscarCampoSmart('portaWeb');
+
+            let serialVal = inputSerial ? inputSerial.value.trim().toUpperCase() : "XX";
+            let splitterVal = inputSplitter && inputSplitter.value.trim() ? inputSplitter.value.trim() : "XX";
+            let portaSplitterVal = inputPorta && inputPorta.value.trim() ? inputPorta.value.trim() : "XX";
+
+            let slotVal = inputSlotOlt ? inputSlotOlt.value.trim() : "";
+            let portaOltVal = inputPortaOlt ? inputPortaOlt.value.trim() : "";
+            let idOnuVal = inputIdOnu ? inputIdOnu.value.trim() : "";
+
+            let ssidVal = inputWifiSsid && inputWifiSsid.value.trim() ? inputWifiSsid.value.trim() : (ssidExtraido || "XX");
+            let passVal = inputWifiPass && inputWifiPass.value.trim() ? inputWifiPass.value.trim() : (passExtraido || "XX");
+
+            if (inputAccessPointText && inputAccessPointText.value.trim() !== '') {
+                const txtAP = inputAccessPointText.value.trim();
+                const matchSlot = txtAP.match(/Slot\s*(\d+)/i);
+                const matchPorta = txtAP.match(/Porta\s*(\d+)/i);
+                if (!slotVal && matchSlot) slotVal = matchSlot[1];
+                if (!portaOltVal && matchPorta) portaOltVal = matchPorta[1];
+            }
+
+            slotVal = (slotVal && !isNaN(slotVal)) ? slotVal.padStart(2, '0') : "XX";
+            portaOltVal = (portaOltVal && !isNaN(portaOltVal)) ? portaOltVal.padStart(2, '0') : "XX";
+            idOnuVal = (idOnuVal && !isNaN(idOnuVal)) ? idOnuVal.padStart(2, '0') : "XX";
+
+            let equipPrefixo = "Equipamento Desconhecido";
+            let autenticacao = "";
+            let novaPortaWeb = "80";
+
+            if (window.lastModalSelection && window.lastModalSelection.serial === serialVal) {
+                let t = window.lastModalSelection.titulo;
+                if (t.includes("BRIDGE") || t.includes("ONU") || t.includes("EKTECH")) {
+                    if (serialVal.startsWith("48575") || serialVal.startsWith("HWTC")) {
+                        equipPrefixo = "ONU Bridge (EKtech/Huawei)";
+                    } else if (serialVal.startsWith("ZTEG") || serialVal.startsWith("5A544")) {
+                        equipPrefixo = "ZTE Bridge";
+                    } else {
+                        equipPrefixo = "ONU Bridge";
+                    }
+                    autenticacao = "Autentica na ZTE";
+                }
+                else if (t.includes("ROT") || t.includes("MESH") || t.includes("ROTEADOR")) {
+                    if (serialVal.startsWith("48575") || serialVal.startsWith("HWTC")) {
+                        equipPrefixo = "Huawei Router";
+                    } else if (serialVal.startsWith("ZTEG") || serialVal.startsWith("5A544")) {
+                        equipPrefixo = "ZTE Router";
+                    } else if (serialVal.startsWith("RCMG1")) {
+                        equipPrefixo = "Raisecom Router";
+                    } else {
+                        equipPrefixo = "Roteador MESH";
+                    }
+                }
+            }
+
+            if (equipPrefixo === "Equipamento Desconhecido") {
+                if (serialVal.startsWith("RCMG1")) {
+                    equipPrefixo = "Raisecom Router";
+                } else if (serialVal.startsWith("RCMG3")) {
+                    equipPrefixo = "Raisecom Bridge (Router desativado)";
+                    autenticacao = "Autentica na ZTE";
+                } else if (serialVal.startsWith("48575") || serialVal.startsWith("HWTC")) {
+                    if (ssidVal !== "XX" || passVal !== "XX") {
+                        equipPrefixo = "Huawei Router";
+                    } else {
+                        equipPrefixo = "ONU Bridge (EKtech/Huawei)";
+                        autenticacao = "Autentica na ZTE";
+                    }
+                } else if (serialVal.startsWith("5A544") || serialVal.startsWith("ZTEG")) {
+                    if (ssidVal !== "XX" || passVal !== "XX") {
+                        equipPrefixo = "ZTE Router";
+                    } else {
+                        equipPrefixo = "ZTE Bridge";
+                        autenticacao = "Autentica na ZTE";
+                    }
+                }
+            }
+
+            if (equipPrefixo.toLowerCase().includes("bridge") || serialVal.startsWith("5A544") || serialVal.startsWith("ZTEGD")) {
+                novaPortaWeb = "8092";
+            }
+
+            if (inputPortaWeb && inputPortaWeb.value !== novaPortaWeb) {
+                inputPortaWeb.focus(); inputPortaWeb.value = novaPortaWeb; inputPortaWeb.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+
+            let blocos = [equipPrefixo];
+            if (serialVal !== "XX") blocos.push(`SN: ${serialVal}`);
+            if (autenticacao) blocos.push(autenticacao);
+            blocos.push(`${splitterVal} - Porta: ${portaSplitterVal}`);
+            blocos.push(`Slot OLT: ${slotVal} Porta OLT: ${portaOltVal} ID: ${idOnuVal}`);
+            blocos.push(`SSID: ${ssidVal} - Senha: ${passVal}`);
+
+            let novoBlocoTecnico = blocos.join(" || ");
+
+            // --- FILTRO DE PRESERVAÇÃO ORDENADO (V19) ---
+            let partesAntigas = textoAtual.split('||').map(p => p.trim()).filter(p => p !== "");
+            let notasInicio = [];
+            let notasFim = [];
+
+            partesAntigas.forEach(p => {
+                let pMin = p.toLowerCase();
+
+                // Se for marcador de plano/tipo de cliente (vai para o início do texto)
+                if (pMin.includes("wifi pro") || pMin.includes("wi-fi pro") || pMin.includes("wifi corporativo")) {
+                    if (!notasInicio.includes(p)) notasInicio.push(p);
+                    return;
+                }
+
+                // Verifica se é uma tag de infraestrutura automática antiga
+                let ehInfraEstrutura = (
+                    pMin.includes("sn:") ||
+                    pMin.includes("serial:") ||
+                    pMin.includes("slot olt:") ||
+                    pMin.includes("porta olt:") ||
+                    pMin.includes("ssid:") ||
+                    pMin.includes("senha:") ||
+                    pMin.includes("autentica na") ||
+                    pMin.includes("autentica no") ||
+                    pMin.includes("raisecom") ||
+                    pMin.includes("zte bridge") ||
+                    pMin.includes("zte router") ||
+                    pMin.includes("huawei") ||
+                    pMin.includes("ektech bridge") ||
+                    pMin.includes("ektech router") ||
+                    pMin.includes("onu bridge") ||
+                    pMin.includes("equipamento desconhecido") ||
+                    pMin.includes("roteador mesh") ||
+                    pMin.match(/[a-z0-9-]+\s*-\s*porta(?::)?\s*\d+/i) ||
+                    pMin.includes("xx - porta xx")
+                );
+
+                // Se não for infraestrutura, é uma observação manual (vai para o fim do texto)
+                if (!ehInfraEstrutura) {
+                    if (!notasFim.includes(p)) notasFim.push(p);
+                }
+            });
+
+            // Montagem final do quebra-cabeça na ordem solicitada
+            let elementosFinais = [];
+            if (notasInicio.length > 0) elementosFinais.push(notasInicio.join(" || "));
+            elementosFinais.push(novoBlocoTecnico);
+            if (notasFim.length > 0) elementosFinais.push(notasFim.join(" || "));
+
+            let textoFinal = elementosFinais.join(" || ");
+
+            if (textoAtual.trim() !== textoFinal.trim()) {
+                inputInfo.focus(); inputInfo.value = textoFinal;
+                inputInfo.dispatchEvent(new Event('input', { bubbles: true }));
+                inputInfo.dispatchEvent(new Event('change', { bubbles: true }));
+                if (botao) {
+                    botao.textContent = '✓ Criado e Atualizado!'; botao.style.backgroundColor = '#28a745';
+                    setTimeout(() => { botao.textContent = '⚡ Criar/Atualizar Complementar'; botao.style.backgroundColor = '#e11d48'; }, 2000);
+                }
+            } else if (botao) {
+                botao.textContent = '⚡ Já padronizado'; botao.style.backgroundColor = '#6c757d';
+                setTimeout(() => { botao.textContent = '⚡ Criar/Atualizar Complementar'; botao.style.backgroundColor = '#e11d48'; }, 1500);
+            }
+        } catch (err) { console.error("Erro Módulo Complementar:", err); }
+    }
+
+    function injetarBotaoOficial() {
+        try {
+            const inputInfo = buscarCampoSmart('complemento');
+            if (!inputInfo || !inputInfo.parentNode || inputInfo.parentNode.querySelector('#btn-osir-total')) return;
+
+            const docContexto = inputInfo.ownerDocument || document;
+            const botao = docContexto.createElement('button');
+            botao.id = 'btn-osir-total'; botao.type = 'button'; botao.textContent = '⚡ Criar/Atualizar Complementar';
+            botao.style.cssText = "margin-left: 10px; padding: 5px 14px; background-color: #e11d48; color: #ffffff; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 12px; vertical-align: middle; box-shadow: 0 2px 4px rgba(0,0,0,0.15);";
+            botao.addEventListener('click', () => executarAutomacaoOficial());
+            inputInfo.parentNode.appendChild(botao);
+        } catch (err) { console.error("Erro Injeção de Botão:", err); }
+    }
+
+    // =========================================================================
+    // MÓDULO 2: NOTIFICADOR (ANÁLISE DE PLANOS E SERVIÇOS CRÍTICOS)
+    // =========================================================================
+    let ultimaCategoria = null; let ultimoTextoOS = "";
     const VARIACOES = {
         wifiPro: ["wifi pro", "wi fi pro", "wifipro", "wifi profissional", /\bwi\sfi\spro\b/],
         osirmovel: ["osirmovel", "osir movel", /\bosir\s*movel\b/],
         osirfone: ["osirfone", "osir fone", "telefonia fixa", /\bosir\s*fone\b/]
     };
-
-    function encontrouVariacao(texto, variacoes) {
-        return variacoes.some(function(v) { return typeof v === "string" ? texto.includes(v) : v.test(texto); });
-    }
+    function encontrouVariacao(texto, variacoes) { return variacoes.some(v => typeof v === "string" ? texto.includes(v) : v.test(texto)); }
 
     function processarAlertas() {
         try {
@@ -119,8 +414,7 @@
             let divDemandaCompleta = null;
             const todasAsDivs = document.querySelectorAll('div');
 
-            for (let i = 0; i < todasAsDivs.length; i++) {
-                let div = todasAsDivs[i];
+            for (let div of todasAsDivs) {
                 if (div.innerText) {
                     let txt = normalizarTexto(div.innerText);
                     if (txt.includes("planos") || txt.includes("servicos a serem ativados") || txt.includes("troca de endereco") || txt.includes("custo r 80 00") || txt.includes("portabilidade")) {
@@ -131,21 +425,16 @@
             if (!divDemandaCompleta) { alertContainer.innerHTML = ""; return; }
 
             const cloneMemoria = divDemandaCompleta.cloneNode(true);
-            cloneMemoria.querySelectorAll('.ql-editor, .dx-htmleditor-content, .ck-content, [contenteditable="true"]').forEach(function(el) { el.remove(); });
+            cloneMemoria.querySelectorAll('.ql-editor, .dx-htmleditor-content, .ck-content, [contenteditable="true"]').forEach(el => el.remove());
             let textoOSOriginal = cloneMemoria.innerText || "";
 
             if (categoryAtual === ultimaCategoria && textoOSOriginal === ultimoTextoOS) return;
-            ultimaCategoria = categoryAtual;
-            ultimoTextoOS = textoOSOriginal;
-            alertContainer.innerHTML = "";
-            if (!textoOSOriginal.trim()) return;
+            ultimaCategoria = categoryAtual; ultimoTextoOS = textoOSOriginal;
+            alertContainer.innerHTML = ""; if (!textoOSOriginal.trim()) return;
 
             let txtNorm = normalizarTexto(textoOSOriginal).replace(/https?:\/\/\S+/gi, "").replace(/\S+@\S+\.\S+/gi, "");
-
             if (categoryAtual.toLowerCase().includes("troca") && categoryAtual.toLowerCase().includes("ender")) {
-                if (/custo[\s\S]*?80\s*00[\s\S]*?\([\s]*x[\s]*\)\s*sim/.test(txtNorm)) {
-                    alertContainer.appendChild(criarCardAlerta("⚠️ ENVIAR PARA SAC N2 FAZER A COBRANÇA DE R$ 80,00!", "#ffebee", "#c62828", "#d32f2f"));
-                }
+                if (/custo[\s\S]*?80\s*00[\s\S]*?\([\s]*x[\s]*\)\s*sim/.test(txtNorm)) alertContainer.appendChild(criarCardAlerta("⚠️ ENVIAR PARA SAC N2 FAZER A COBRANÇA DE R$ 80,00!", "#ffebee", "#c62828", "#d32f2f"));
             } else {
                 if (encontrouVariacao(txtNorm, VARIACOES.osirmovel)) alertContainer.appendChild(criarCardAlerta("📱 OSIRMÓVEL: VERIFICAR SE O CHIP FOI ENTREGUE!", "#fff3e0", "#e65100", "#ff9800"));
                 if (encontrouVariacao(txtNorm, VARIACOES.wifiPro)) alertContainer.appendChild(criarCardAlerta("🌐 WIFI-PRO: VERIFICAR SE FOI INSTALADO!", "#f3e5f5", "#4a148c", "#9c27b0"));
@@ -156,12 +445,11 @@
     }
 
     // =========================================================================
-    // MÓDULO 2: AUDITOR DE ESTOQUE (CONSUMO INTERNO)
+    // MÓDULO 3: AUDITOR DE ESTOQUE (CONSUMO INTERNO)
     // =========================================================================
     function abaConsumoEstaAtiva(doc) {
         const spansAba = doc.querySelectorAll('.MuiTab-wrapper');
-        for (let i = 0; i < spansAba.length; i++) {
-            let span = spansAba[i];
+        for (let span of spansAba) {
             if (span.innerText && span.innerText.toUpperCase().includes("PRODUTOS - CONSUMO INTERNO")) {
                 const b = span.closest('button');
                 if (b && b.classList.contains('Mui-selected')) return true;
@@ -171,23 +459,22 @@
     }
 
     function analisarGridMateriais(doc) {
-        let errosItens = [];
-        let errosQtd = [];
-        if (!abaConsumoEstaAtiva(doc)) return { errosItens: errosItens, errosQtd: errosQtd };
+        let errosItens = []; let errosQtd = [];
+        if (!abaConsumoEstaAtiva(doc)) return { errosItens, errosQtd };
 
         const linhasGrid = doc.querySelectorAll('tr.line, [role="row"], .rt-tr, [id*="datagrid_row" i]');
-        linhasGrid.forEach(function(linha) {
+        linhasGrid.forEach(linha => {
             const celulas = linha.querySelectorAll('td, [role="gridcell"], .rt-td, div[class*="cell" i]');
             if (celulas.length >= 3) {
                 const txtProd = celulas[1].textContent.trim();
                 if (txtProd && isNaN(txtProd) && txtProd.length > 3 && !txtProd.toUpperCase().startsWith("TOTAL")) {
                     const itemNorm = normalizarItem(txtProd);
-                    let ferramenta = listaFerramentasNormalizada.find(function(f) { return itemNorm === f || itemNorm.includes(f); });
+                    let ferramenta = listaFerramentasNormalizada.find(f => itemNorm === f || itemNorm.includes(f));
 
                     if (ferramenta) {
-                        if (!errosItens.some(function(e) { return e.item === txtProd; })) errosItens.push({ item: txtProd, motivo: "FERRAMENTA DE TÉCNICO! NÃO ALOCAR NO CONSUMO!" });
+                        if (!errosItens.some(e => e.item === txtProd)) errosItens.push({ item: txtProd, motivo: "FERRAMENTA DE TéCNICO! NÃO ALOCAR NO CONSUMO!" });
                     } else if (itemNorm && !listaPermitidaNormalizada.includes(itemNorm) && itemNorm !== "PRODUTO") {
-                        if (!errosItens.some(function(e) { return e.item === txtProd; })) errosItens.push({ item: txtProd, motivo: "NÃO ALOCAR COMO CONSUMO INTERNO!" });
+                        if (!errosItens.some(e => e.item === txtProd)) errosItens.push({ item: txtProd, motivo: "NÃO ALOCAR COMO CONSUMO INTERNO!" });
                     }
 
                     if (itemNorm === CABO_DROP_NORMALIZADO) {
@@ -197,19 +484,18 @@
                 }
             }
         });
-        return { errosItens: errosItens, errosQtd: errosQtd };
+        return { errosItens, errosQtd };
     }
 
     function rodarAuditoriaGlobal() {
         try {
-            let todosErrosItens = [];
-            let todosErrosQtd = [];
+            let todosErrosItens = []; let todosErrosQtd = [];
 
             const resPrincipal = analisarGridMateriais(document);
             todosErrosItens = todosErrosItens.concat(resPrincipal.errosItens);
             todosErrosQtd = todosErrosQtd.concat(resPrincipal.errosQtd);
 
-            document.querySelectorAll('iframe').forEach(function(frame) {
+            document.querySelectorAll('iframe').forEach(frame => {
                 try {
                     const docFrame = frame.contentDocument || frame.contentWindow.document;
                     const resFrame = analisarGridMateriais(docFrame);
@@ -219,21 +505,22 @@
             });
 
             auditorContainer.innerHTML = "";
-            todosErrosItens.filter(function(v, i, a) { return a.findIndex(function(t) { return t.item === v.item; }) === i; }).forEach(function(e) {
+            todosErrosItens.filter((v, i, a) => a.findIndex(t => t.item === v.item) === i).forEach(e => {
                 auditorContainer.appendChild(criarCardErroEstoque(e.item, e.motivo));
             });
-            todosErrosQtd.filter(function(v, i, a) { return a.findIndex(function(t) { return t.item === v.item && t.qtd === v.qtd; }) === i; }).forEach(function(e) {
+            todosErrosQtd.filter((v, i, a) => a.findIndex(t => (t.item === v.item && t.qtd === v.qtd)) === i).forEach(e => {
                 auditorContainer.appendChild(criarCardErroQuantidade(e.item, e.qtd));
             });
         } catch (err) { console.error("Erro Auditoria Global:", err); }
     }
 
     // =========================================================================
-    // GATILHOS EXECUTÁVEIS
+    // DISPARADORES SEGUROS
     // =========================================================================
+    setInterval(injetarBotaoOficial, 1000);
     setInterval(rodarAuditoriaGlobal, 1500);
 
-    const observador = new MutationObserver(function() { try { processarAlertas(); } catch (e) {} });
+    const observador = new MutationObserver(() => { try { processarAlertas(); } catch (e) {} });
     observador.observe(document.body, { childList: true, subtree: true });
     try { processarAlertas(); } catch (e) {}
 })();
