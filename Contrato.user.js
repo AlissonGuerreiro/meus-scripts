@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Contrato.
 // @namespace    http://tampermonkey.net/
-// @version      11.4
-// @description  Ajuste Front-End Inteligente: Captura e aplicação automática incluindo cálculo automatizado de VLAN.
+// @version      11.5
+// @description  Ajuste Front-End Inteligente: Captura e aplicação automática incluindo cálculo automatizado de VLAN. (SEM BLOQUEIO DE CONTRATO)
 // @author       Alisson Guerreiro / Modo Integrado
 // @homepageURL  https://github.com/AlissonGuerreiro/meus-scripts
 // @updateURL    https://raw.githubusercontent.com/AlissonGuerreiro/meus-scripts/main/Contrato.user.js
@@ -41,7 +41,6 @@
         }
 
         // Regra para Slots maiores que 0 (Concatenação Posicional)
-        // Mantém o zero à esquerda na porta se for menor que 10 (Ex: Slot 10 Porta 9 -> 1009)
         const portaFormatada = porta < 10 ? "0" + porta : porta.toString();
         return slot.toString() + portaFormatada;
     }
@@ -52,13 +51,10 @@
     if (window.location.href.includes(URL_ATENDIMENTO)) {
 
         function injetarBotaoDinamico() {
-            // Se o botão de copiar já existe na tela, não faz nada
             if (document.getElementById('btn-copiar-osir-nativo')) return;
 
-            // Busca os elementos de referência
             const btnChecar = document.getElementById('checar');
 
-            // Busca o botão "Conexão" caso o "Checar" não exista
             let btnConexao = null;
             const todosBotoes = document.querySelectorAll('button, input[type="button"], a');
             for (let btn of todosBotoes) {
@@ -68,10 +64,8 @@
                 }
             }
 
-            // Só prossegue se encontrar pelo menos uma das duas referências na barra
             if (btnChecar || btnConexao) {
 
-                // Cria o botão roxo com estilo compacto idêntico ao original
                 const btnCopiar = document.createElement('a');
                 btnCopiar.id = 'btn-copiar-osir-nativo';
                 btnCopiar.type = 'button';
@@ -94,7 +88,6 @@
                     transition: background 0.2s;
                 `;
 
-                // Lógica de Captura dos Dados (Atualizada com VLAN)
                 btnCopiar.addEventListener('click', (e) => {
                     e.preventDefault();
                     try {
@@ -104,13 +97,11 @@
                         const divTopo = document.body;
                         const matchContrato = divTopo.innerText.match(/Cliente\s*-\s*(\d+)/i);
                         if (matchContrato && matchContrato[1]) {
-                             dados.contrato = matchContrato[1].trim(); // Correção de nomenclatura interna
+                             dados.contrato = matchContrato[1].trim();
                         }
 
                         dados.ssid = document.getElementById('ssid')?.value.trim() || "XX";
                         dados.senha = document.getElementById('senhaSSID')?.value.trim() || "XX";
-
-                        // Captura o ponto de acesso na tela de provisionamento se disponível
                         dados.pontoAcesso = document.getElementById('AuthenticationAccessPointTitle')?.value.trim() || "";
 
                         const todosInputs = document.querySelectorAll('input');
@@ -123,15 +114,13 @@
                             if (idStr.includes('porta') && !idStr.includes('olt') && val) dados.porta = parseInt(val, 10).toString();
                             if (idStr.includes('portaolt') && val) dados.porta = parseInt(val, 10).toString();
                             if (idStr.includes('idonu') || idStr.includes('id_onu')) dados.id = parseInt(val, 10).toString();
-                            if (idStr.includes('vlan') && val) dados.vlan = val; // Captura o campo da VLAN se já existir preenchido
+                            if (idStr.includes('vlan') && val) dados.vlan = val;
                         });
 
-                        // Se o sistema de provisionamento não der a VLAN pronta, o script calcula na hora
                         if (dados.vlan === "XX" || dados.vlan === "") {
                             dados.vlan = calcularVlanOsir(dados.pontoAcesso, dados.slot, dados.porta);
                         }
 
-                        // Nova String Secreta incluindo a VLAN e o Ponto de Acesso extraído
                         const stringSecreta = `OSIRDATA||${dados.serial}||${dados.ssid}||${dados.senha}||${dados.slot}||${dados.porta}||${dados.id}||${dados.contrato}||${dados.vlan}||${dados.pontoAcesso}`;
                         navigator.clipboard.writeText(stringSecreta).then(() => {
                             btnCopiar.textContent = `✅ Copiado!`;
@@ -144,7 +133,6 @@
                     } catch (err) { console.error(err); }
                 });
 
-                // 🔀 INJEÇÃO ADAPTÁVEL NO LAYOUT
                 if (btnChecar) {
                     btnChecar.insertAdjacentElement('afterend', btnCopiar);
                 } else if (btnConexao) {
@@ -156,7 +144,7 @@
     }
 
     // =========================================================================
-    // PARTE 2: INSERÇÃO EM SEGUNDO PLANO (VOALLE ERP)
+    // PARTE 2: INSERÇÃO EM SEGUNDO PLANO (VOALLE ERP) - SEM BLOQUEIO
     // =========================================================================
     if (window.location.href.includes(URL_CONTRATO_VOALLE)) {
         function monitorarBotaoVoalle() {
@@ -179,29 +167,11 @@
                                     pontoAcessoOriginal: partes[9] || ""
                                 };
 
-                                 let contratoAtualVoalle = "";
-                                const matchUrl = window.location.href.match(/contract_panel\/(\d+)/);
-                                if (matchUrl && matchUrl[1]) {
-                                    contratoAtualVoalle = matchUrl[1].trim();
-                                } else {
-                                    const matchTextoTopo = document.body.innerText.match(/Contrato\s*(\d+)/i);
-                                    if (matchTextoTopo && matchTextoTopo[1]) {
-                                        contratoAtualVoalle = matchTextoTopo[1].trim();
-                                    }
-                                }
+                                // ✅ BLOQUEIO DE CONTRATO REMOVIDO - SEGUE DIRETO
 
-                                if (dados.contratoOriginal !== "Nenhum" && contratoAtualVoalle !== "" && dados.contratoOriginal !== contratoAtualVoalle) {
-                                     e.preventDefault();
-                                    e.stopPropagation();
-                                    alert(`❌ OPERAÇÃO BLOQUEADA POR SEGURANÇA!\n\nVocê copiou os dados do contrato [${dados.contratoOriginal}], mas está tentando aplicar na aba do contrato [${contratoAtualVoalle}].`);
-                                    return;
-                                }
-
-                                // Faz a leitura em tempo real do campo de Ponto de Acesso do Voalle para checar se é caso de VLAN fixa (2200)
                                 const inputPontoAcessoVoalle = document.getElementById('AuthenticationAccessPointTitle');
                                 const txtPontoAcesso = inputPontoAcessoVoalle ? inputPontoAcessoVoalle.value.trim() : dados.pontoAcessoOriginal;
 
-                                // Gera a VLAN final aplicando a regra de negócio exata
                                 const vlanFinal = calcularVlanOsir(txtPontoAcesso, dados.slot, dados.porta);
 
                                 const inputWifiSsid = document.getElementById('AuthenticationContractWifiName');
@@ -237,7 +207,6 @@
                                         equipPrefixo = "Huawei Router";
                                     }
 
-                                    // Utiliza a vlanFinal calculada pelo motor interno do Script
                                     let textoFinal = `${equipPrefixo} || SN: ${dados.serial} || Autentica na ZTE || XX - Porta XX || Slot OLT: ${dados.slot} Porta OLT: ${dados.porta} ID: ${dados.id} VLAN: ${vlanFinal} || SSID: ${dados.ssid} - Senha: ${dados.senha}`;
 
                                     inputComplementar.value = textoFinal;
