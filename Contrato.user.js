@@ -4,7 +4,9 @@
 // @version      11.3
 // @description  Ajuste Front-End Inteligente: Captura e aplicação automática incluindo o campo VLAN.
 // @author       Alisson Guerreiro / Modo Integrado
-// @homepageURL  https://github.com/seu-usuario/seu-repositorio
+// @homepageURL  https://github.com/AlissonGuerreiro/meus-scripts
+// @updateURL    https://raw.githubusercontent.com/AlissonGuerreiro/meus-scripts/main/Contrato.user.js
+// @downloadURL  https://raw.githubusercontent.com/AlissonGuerreiro/meus-scripts/main/Contrato.user.js
 // @match        *://*.osirnet.com.br/*
 // @match        *://*.osir.net.br/*
 // @grant        none
