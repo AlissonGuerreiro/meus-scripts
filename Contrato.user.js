@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Contrato - Com Criação Automática do Complemento
+// @name         Contrato - Com Criação Automática do Complemento (Corrigido)
 // @namespace    http://tampermonkey.net/
-// @version      13.1
-// @description  Cria automaticamente o complemento ao capturar os dados
+// @version      13.2
+// @description  Corrige tipo de equipamento e remove ponto de acesso duplicado
 // @author       Alisson Guerreiro / Modo Integrado
 // @match        *://*.osirnet.com.br/*
 // @match        *://*.osir.net.br/*
@@ -40,13 +40,17 @@
     }
 
     // =========================================================================
-    // FUNÇÃO PARA DETERMINAR TIPO DE EQUIPAMENTO
+    // FUNÇÃO PARA DETERMINAR TIPO DE EQUIPAMENTO (UNIFICADA)
     // =========================================================================
     function determinarTipoEquipamento(tipoProvisionamento, serial) {
         const tipo = (tipoProvisionamento || "").toLowerCase().trim();
         const serialUpper = (serial || "").toUpperCase();
 
+        console.log(`🔍 Determinando tipo: tipoProv="${tipo}", serial="${serialUpper}"`);
+
+        // ✅ PRIORIDADE: Usa o tipoProvisionamento (b ou r)
         if (tipo === "r") {
+            // É um Router
             if (serialUpper.startsWith("ZTEG") || serialUpper.startsWith("5A54")) {
                 return "ZTE Router";
             } else if (serialUpper.startsWith("4857") || serialUpper.startsWith("HWTC")) {
@@ -58,6 +62,7 @@
         }
 
         if (tipo === "b") {
+            // É uma Bridge
             if (serialUpper.startsWith("ZTEG") || serialUpper.startsWith("5A544") || serialUpper.startsWith("ZTEGD")) {
                 return "ZTE Bridge";
             } else if (serialUpper.startsWith("4857") || serialUpper.startsWith("HWTC")) {
@@ -66,7 +71,7 @@
             return "Bridge";
         }
 
-        // Fallback
+        // Fallback: Se não encontrar b/r, usa lógica baseada no serial
         if (serialUpper.startsWith("ZTEG") || serialUpper.startsWith("5A54")) {
             return "ZTE Router";
         } else if (serialUpper.startsWith("4857") || serialUpper.startsWith("HWTC")) {
@@ -119,7 +124,7 @@
     }
 
     // =========================================================================
-    // FUNÇÃO PARA MONTAR O COMPLEMENTO
+    // FUNÇÃO PARA MONTAR O COMPLEMENTO (SEM PONTO DE ACESSO DUPLICADO)
     // =========================================================================
     function montarComplemento(dados, tipoEquip, vlanFinal) {
         let partes = [];
@@ -137,20 +142,13 @@
         // 3. AUTENTICAÇÃO
         partes.push("Autentica na ZTE");
 
-        // 4. OLT E PORTAS
-        let oltPart = dados.olt || "XX";
-        if (dados.splitter && dados.portaSplitter) {
-            oltPart += ` - ${dados.splitter} - Porta: ${dados.portaSplitter}`;
-        }
-        partes.push(oltPart);
-
-        // 5. SLOT OLT, PORTA OLT, ID
+        // 4. SLOT OLT, PORTA OLT, ID (SEM OLT duplicado)
         partes.push(`Slot OLT: ${dados.slot} Porta OLT: ${dados.porta} ID: ${dados.id}`);
 
-        // 6. SSID E SENHA
+        // 5. SSID E SENHA
         partes.push(`SSID: ${dados.ssid} - Senha: ${dados.senha}`);
 
-        // 7. DADOS DE TELEFONIA (se tiver)
+        // 6. DADOS DE TELEFONIA (se tiver)
         if (dados.telefonia && dados.telefonia.temTelefonia) {
             let telefoniaPart = `N° ${dados.telefonia.numero}`;
 
@@ -206,28 +204,6 @@
     }
 
     // =========================================================================
-    // FUNÇÃO PARA CAPTURAR SPLITTER (se existir)
-    // =========================================================================
-    function capturarSplitter() {
-        let dados = {
-            splitter: "XX",
-            portaSplitter: "XX"
-        };
-
-        const inputSplitter = document.getElementById('AuthenticationSplitterPortTitle');
-        if (inputSplitter && inputSplitter.value) {
-            dados.splitter = inputSplitter.value.trim();
-        }
-
-        const inputPortaSplitter = document.getElementById('AuthenticationSplitterPortPort');
-        if (inputPortaSplitter && inputPortaSplitter.value) {
-            dados.portaSplitter = inputPortaSplitter.value.trim();
-        }
-
-        return dados;
-    }
-
-    // =========================================================================
     // FUNÇÃO PARA EXTRAIR NÚMERO DO CONTRATO DA URL
     // =========================================================================
     function extrairContratoDaURL() {
@@ -262,7 +238,11 @@
             janelaExistente.remove();
         }
 
+        // ✅ USA A MESMA FUNÇÃO PARA DETERMINAR O TIPO
         const tipoEquip = determinarTipoEquipamento(dados.tipoProvisionamento, dados.serial);
+        console.log(`📦 Tipo de equipamento (janela): ${tipoEquip}`);
+
+        // ✅ MONTA O COMPLEMENTO SEM OLT DUPLICADO
         const complementoPreview = montarComplemento(dados, tipoEquip, dados.vlan);
 
         const janela = document.createElement('div');
@@ -348,7 +328,6 @@
             { label: '🔌 Serial', valor: dados.serial || 'XX' },
             { label: '📡 SSID', valor: dados.ssid || 'XX' },
             { label: '🔑 Senha', valor: dados.senha || 'XX' },
-            { label: '📶 Ponto Acesso', valor: dados.pontoAcesso || 'N/A' },
             { label: '🖥️ OLT', valor: dados.olt || 'N/A' },
             { label: '📊 Slot OLT', valor: dados.slot || 'XX' },
             { label: '🔌 Porta OLT', valor: dados.porta || 'XX' },
@@ -536,8 +515,6 @@
                             vlan: "XX",
                             pontoAcesso: "",
                             olt: "N/A",
-                            splitter: "XX",
-                            portaSplitter: "XX",
                             tipoProvisionamento: "",
                             telefonia: {
                                 temTelefonia: false,
@@ -561,12 +538,7 @@
                         // Capturar dados de telefonia
                         dados.telefonia = capturarDadosTelefonia();
 
-                        // Capturar splitter
-                        const splitterData = capturarSplitter();
-                        dados.splitter = splitterData.splitter;
-                        dados.portaSplitter = splitterData.portaSplitter;
-
-                        // Capturar Ponto Acesso
+                        // Capturar Ponto Acesso (só para referência, não vai no complemento)
                         const inputPontoAcesso = document.getElementById('AuthenticationAccessPointTitle');
                         if (inputPontoAcesso && inputPontoAcesso.value) {
                             dados.pontoAcesso = inputPontoAcesso.value.trim();
@@ -614,24 +586,25 @@
                         }
 
                         // =========================================================
-                        // 2. DETERMINA O TIPO DE EQUIPAMENTO
+                        // 2. DETERMINA O TIPO DE EQUIPAMENTO (UNIFICADO)
                         // =========================================================
                         const tipoEquip = determinarTipoEquipamento(dados.tipoProvisionamento, dados.serial);
                         console.log(`📦 Tipo de equipamento: ${tipoEquip}`);
 
                         // =========================================================
-                        // 3. MONTA O COMPLEMENTO AUTOMATICAMENTE
+                        // 3. MONTA O COMPLEMENTO (SEM OLT DUPLICADO)
                         // =========================================================
                         const complementoTexto = montarComplemento(dados, tipoEquip, dados.vlan);
                         console.log(`📝 Complemento gerado: ${complementoTexto}`);
 
                         // =========================================================
-                        // 4. COPIA PARA O CLIPBOARD (com o complemento já montado)
+                        // 4. COPIA PARA O CLIPBOARD
                         // =========================================================
                         const telefoniaStr = dados.telefonia.temTelefonia
                             ? `${dados.telefonia.numero}||${dados.telefonia.senha}||${dados.telefonia.ip || ''}`
                             : '||||';
 
+                        // ✅ AGORA INCLUI O COMPLEMENTO PRÉ-MONTADO
                         const stringSecreta = `OSIRDATA||${dados.serial}||${dados.ssid}||${dados.senha}||${dados.slot}||${dados.porta}||${dados.id}||${dados.contrato}||${dados.vlan}||${dados.pontoAcesso}||${dados.olt}||${dados.tipoProvisionamento}||${telefoniaStr}||${complementoTexto}`;
 
                         navigator.clipboard.writeText(stringSecreta).then(() => {
@@ -639,7 +612,7 @@
                             btnCopiar.textContent = `✅ Pronto! ${statusTelefonia}`;
                             btnCopiar.style.backgroundColor = '#10b981';
 
-                            // Mostra uma notificação rápida com o complemento
+                            // Notificação
                             const notificacao = document.createElement('div');
                             notificacao.style.cssText = `
                                 position: fixed;
@@ -805,7 +778,7 @@
                                     return;
                                 }
 
-                                // Determina tipo de equipamento
+                                // ✅ USA A MESMA FUNÇÃO PARA DETERMINAR O TIPO
                                 const tipoEquip = determinarTipoEquipamento(dados.tipoProvisionamento, dados.serial);
                                 console.log(`📦 Tipo definido: ${tipoEquip}`);
 
@@ -832,7 +805,7 @@
                                     inputWifiPass.dispatchEvent(new Event('input', { bubbles: true }));
                                 }
 
-                                // ✅ PREENCHE O COMPLEMENTO (USA O PRÉ-MONTADO OU CRIA NOVO)
+                                // ✅ PREENCHE O COMPLEMENTO (USA O PRÉ-MONTADO)
                                 const textareas = document.querySelectorAll('textarea, input[type="text"]');
                                 let inputComplementar = null;
                                 for (let el of textareas) {
@@ -851,7 +824,7 @@
                                         textoFinal = dados.complementoPreMontado;
                                         console.log(`✅ Usando complemento pré-montado`);
                                     } else {
-                                        // Fallback: monta do zero
+                                        // Fallback: monta do zero (sem OLT duplicado)
                                         textoFinal = montarComplemento(dados, tipoEquip, vlanFinal);
                                         console.log(`✅ Montando complemento do zero`);
                                     }
