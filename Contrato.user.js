@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Contrato - Janela com Controles de Tamanho
 // @namespace    http://tampermonkey.net/
-// @version      13.5
+// @version      19.0
 // @description  Janela flutuante com botões para ajustar tamanho
 // @author       Alisson Guerreiro / Modo Integrado
 // @match        *://*.osirnet.com.br/*
@@ -148,7 +148,7 @@
             }
             return "Router";
         }
-
+        
         if (tipo === "b") {
             if (serialUpper.startsWith("ZTEG") || serialUpper.startsWith("5A544") || serialUpper.startsWith("ZTEGD")) {
                 return "ZTE Bridge";
@@ -277,13 +277,13 @@
         if (match && match[1]) {
             return match[1].trim();
         }
-
+        
         const textoPagina = document.body.innerText;
         const matchTexto = textoPagina.match(/Contrato\s*[#:]\s*(\d+)/i);
         if (matchTexto && matchTexto[1]) {
             return matchTexto[1].trim();
         }
-
+        
         return null;
     }
 
@@ -292,7 +292,7 @@
     // =========================================================================
     function criarJanelaFlutuante(dados, contratoAtual) {
         const contratoCopiado = dados.contrato;
-
+        
         if (contratoCopiado && contratoAtual && contratoCopiado !== contratoAtual) {
             console.log(`🔴 Contrato diferente`);
             return;
@@ -499,7 +499,7 @@
             margin-bottom: 12px;
             text-align: center;
         `;
-
+        
         let badgeTexto = '✅ Contrato correspondente - Dados válidos';
         if (dados.telefonia && dados.telefonia.temTelefonia) {
             badgeTexto += ' 📞 Com Telefonia';
@@ -603,7 +603,71 @@
         previewTexto.textContent = complementoPreview;
         conteudo.appendChild(previewTexto);
 
-        // Status
+        // Status// ==UserScript==
+// @name         Contrato - Janela com Controles de Tamanho
+// @namespace    http://tampermonkey.net/
+// @version      13.5
+// @description  Janela flutuante com botões para ajustar tamanho
+// @author       Alisson Guerreiro / Modo Integrado
+// @match        *://*.osirnet.com.br/*
+// @match        *://*.osir.net.br/*
+// @grant        none
+// @run-at       document-end
+// ==/UserScript==
+
+(function() {
+    'use strict';
+
+    const URL_ATENDIMENTO = "filaProvisionamento.php";
+    const URL_CONTRATO_VOALLE = "authentication_contracts/contract_panel";
+
+    // =========================================================================
+    // CONFIGURAÇÕES DA JANELA FLUTUANTE
+    // =========================================================================
+    const CONFIG_JANELA = {
+        larguraMin: 280,
+        larguraMax: 600,
+        larguraPadrao: 420,
+        alturaMin: 300,
+        alturaMax: 800,
+        alturaPadrao: 550,
+        fonteMin: 9,
+        fonteMax: 18,
+        fontePadrao: 13,
+        passo: 20  // Quantos pixels aumenta/diminui
+    };
+
+    // Estado atual da janela
+    let estadoJanela = {
+        largura: CONFIG_JANELA.larguraPadrao,
+        altura: CONFIG_JANELA.alturaPadrao,
+        fonte: CONFIG_JANELA.fontePadrao
+    };
+
+    // =========================================================================
+    // FUNÇÃO PARA REDIMENSIONAR A JANELA FLUTUANTE
+    // =========================================================================
+    function redimensionarJanela(deltaLargura, deltaAltura, deltaFonte) {
+        const janela = document.getElementById('osir-floating-window');
+        if (!janela) return;
+
+        // Atualiza estado
+        estadoJanela.largura = Math.max(
+            CONFIG_JANELA.larguraMin,
+            Math.min(CONFIG_JANELA.larguraMax, estadoJanela.largura + deltaLargura)
+        );
+        estadoJanela.altura = Math.max(
+            CONFIG_JANELA.alturaMin,
+            Math.min(CONFIG_JANELA.alturaMax, estadoJanela.altura + deltaAltura)
+        );
+        estadoJanela.fonte = Math.max(
+            CONFIG_JANELA.fonteMin,
+            Math.min(CONFIG_JANELA.fonteMax, estadoJanela.fonte + deltaFonte)
+        );
+
+        // Aplica os novos tamanhos
+        janela.style.width = estadoJanela.largura + 'px';
+
         if (dados.aplicado) {
             const status = document.createElement('div');
             status.style.cssText = `
@@ -638,12 +702,12 @@
         `;
         btnCopiar.onmouseover = () => btnCopiar.style.background = '#7c3aed';
         btnCopiar.onmouseout = () => btnCopiar.style.background = '#8b5cf6';
-
+        
         btnCopiar.onclick = () => {
-            const telefoniaStr = dados.telefonia && dados.telefonia.temTelefonia
+            const telefoniaStr = dados.telefonia && dados.telefonia.temTelefonia 
                 ? `${dados.telefonia.numero}||${dados.telefonia.senha}||${dados.telefonia.ip || ''}`
                 : '||||';
-
+            
             const stringSecreta = `OSIRDATA||${dados.serial}||${dados.ssid}||${dados.senha}||${dados.slot}||${dados.porta}||${dados.id}||${dados.contrato}||${dados.vlan}||${dados.pontoAcesso}||${dados.olt}||${dados.tipoProvisionamento}||${telefoniaStr}`;
             navigator.clipboard.writeText(stringSecreta).then(() => {
                 btnCopiar.textContent = '✅ Copiado!';
@@ -654,7 +718,7 @@
                 }, 2000);
             });
         };
-
+        
         conteudo.appendChild(btnCopiar);
         janela.appendChild(conteudo);
         document.body.appendChild(janela);
@@ -791,17 +855,17 @@
                         const tipoEquip = determinarTipoEquipamento(dados.tipoProvisionamento, dados.serial);
                         const complementoTexto = montarComplemento(dados, tipoEquip, dados.vlan);
 
-                        const telefoniaStr = dados.telefonia.temTelefonia
+                        const telefoniaStr = dados.telefonia.temTelefonia 
                             ? `${dados.telefonia.numero}||${dados.telefonia.senha}||${dados.telefonia.ip || ''}`
                             : '||||';
-
+                        
                         const stringSecreta = `OSIRDATA||${dados.serial}||${dados.ssid}||${dados.senha}||${dados.slot}||${dados.porta}||${dados.id}||${dados.contrato}||${dados.vlan}||${dados.pontoAcesso}||${dados.olt}||${dados.tipoProvisionamento}||${telefoniaStr}||${complementoTexto}`;
-
+                        
                         navigator.clipboard.writeText(stringSecreta).then(() => {
                             const statusTelefonia = dados.telefonia.temTelefonia ? '📞' : '';
                             btnCopiar.textContent = `✅ Pronto! ${statusTelefonia}`;
                             btnCopiar.style.backgroundColor = '#10b981';
-
+                            
                             const notificacao = document.createElement('div');
                             notificacao.style.cssText = `
                                 position: fixed;
@@ -822,14 +886,14 @@
                                 <div style="font-size: 11px; opacity: 0.8; word-break: break-all;">${complementoTexto.substring(0, 100)}${complementoTexto.length > 100 ? '...' : ''}</div>
                             `;
                             document.body.appendChild(notificacao);
-
+                            
                             setTimeout(() => {
                                 notificacao.remove();
                                 btnCopiar.textContent = '💾 Capturar e Criar Complemento';
                                 btnCopiar.style.backgroundColor = '#8b5cf6';
                             }, 4000);
                         });
-                    } catch (err) {
+                    } catch (err) { 
                         console.error('Erro na captura:', err);
                     }
                 });
@@ -848,7 +912,7 @@
     // PARTE 2: INSERÇÃO NO ERP
     // =========================================================================
     if (window.location.href.includes(URL_CONTRATO_VOALLE)) {
-
+        
         const contratoAtual = extrairContratoDaURL();
 
         async function verificarDadosNoClipboard() {
@@ -856,10 +920,10 @@
                 const texto = await navigator.clipboard.readText();
                 if (texto && texto.startsWith("OSIRDATA||")) {
                     const partes = texto.split("||");
-
+                    
                     const telefoniaParts = partes[12] ? partes[12].split('||') : [];
                     const complementoPreMontado = partes[13] || '';
-
+                    
                     const dados = {
                         serial: partes[1] || "XX",
                         ssid: partes[2] || "XX",
@@ -931,10 +995,10 @@
 
                             if (texto.startsWith("OSIRDATA||")) {
                                 const partes = texto.split("||");
-
+                                
                                 const telefoniaParts = partes[12] ? partes[12].split('||') : [];
                                 const complementoPreMontado = partes[13] || '';
-
+                                
                                 const dados = {
                                     serial: partes[1] || "XX",
                                     ssid: partes[2] || "XX",
@@ -970,7 +1034,7 @@
                                 const vlanFinal = calcularVlanOsir(dados.pontoAcesso, dados.slot, dados.porta);
 
                                 preencherVlan(vlanFinal);
-
+                                
                                 if (dados.id && dados.id !== "0" && dados.id !== "XX") {
                                     preencherIdOnu(dados.id);
                                 }
@@ -999,7 +1063,7 @@
 
                                 if (inputComplementar) {
                                     let textoFinal;
-
+                                    
                                     if (dados.complementoPreMontado) {
                                         textoFinal = dados.complementoPreMontado;
                                         console.log(`✅ Usando complemento pré-montado`);
@@ -1007,7 +1071,7 @@
                                         textoFinal = montarComplemento(dados, tipoEquip, vlanFinal);
                                         console.log(`✅ Montando complemento do zero`);
                                     }
-
+                                    
                                     inputComplementar.value = textoFinal;
                                     inputComplementar.dispatchEvent(new Event('input', { bubbles: true }));
                                     inputComplementar.dispatchEvent(new Event('change', { bubbles: true }));
