@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Contrato - Janela com Controles de Tamanho
 // @namespace    http://tampermonkey.net/
-// @version      19.1
+// @version      13.5
 // @description  Janela flutuante com botões para ajustar tamanho
 // @author       Alisson Guerreiro / Modo Integrado
 // @match        *://*.osirnet.com.br/*
