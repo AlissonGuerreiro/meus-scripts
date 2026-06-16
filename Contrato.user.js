@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Contrato.
 // @namespace    http://tampermonkey.net/
-// @version      11.3
-// @description  Ajuste Front-End Inteligente: Captura e aplicação automática incluindo o campo VLAN.
+// @version      11.4
+// @description  Ajuste Front-End Inteligente: Captura e aplicação automática incluindo cálculo automatizado de VLAN.
 // @author       Alisson Guerreiro / Modo Integrado
 // @homepageURL  https://github.com/AlissonGuerreiro/meus-scripts
 // @updateURL    https://raw.githubusercontent.com/AlissonGuerreiro/meus-scripts/main/Contrato.user.js
@@ -18,6 +18,33 @@
 
     const URL_ATENDIMENTO = "filaProvisionamento.php";
     const URL_CONTRATO_VOALLE = "authentication_contracts/contract_panel";
+
+    // =========================================================================
+    // FUNÇÃO AUXILIAR: CALCULO INTELIGENTE DE VLAN (REGRA OSIRNET)
+    // =========================================================================
+    function calcularVlanOsir(pontoAcesso, slotStr, portaStr) {
+        const pa = (pontoAcesso || "").toUpperCase();
+
+        // Regra de Exceção: Pontos de acesso com VLAN Fixa 2200
+        if (pa.includes("STL_CE3_R") || pa.includes("STL_CE4_R") || pa.includes("TTN_LAN") || pa.includes("GAR")) {
+            return "2200";
+        }
+
+        const slot = parseInt(slotStr, 10);
+        const porta = parseInt(portaStr, 10);
+
+        if (isNaN(slot) || isNaN(porta)) return "XX";
+
+        // Regra para Slot 00 (Soma 10)
+        if (slot === 0) {
+            return (porta + 10).toString();
+        }
+
+        // Regra para Slots maiores que 0 (Concatenação Posicional)
+        // Mantém o zero à esquerda na porta se for menor que 10 (Ex: Slot 10 Porta 9 -> 1009)
+        const portaFormatada = porta < 10 ? "0" + porta : porta.toString();
+        return slot.toString() + portaFormatada;
+    }
 
     // =========================================================================
     // PARTE 1: CAPTURA COM BOTÃO ADAPTÁVEL (FILA DE PROVISIONAMENTO)
@@ -72,16 +99,19 @@
                     e.preventDefault();
                     try {
                         let dados = { serial: "XX", ssid: "XX", senha: "XX",
-                                      slot: "0", porta: "0", id: "0", contrato: "Nenhum", vlan: "XX" };
+                                      slot: "0", porta: "0", id: "0", contrato: "Nenhum", vlan: "XX", pontoAcesso: "" };
 
                         const divTopo = document.body;
                         const matchContrato = divTopo.innerText.match(/Cliente\s*-\s*(\d+)/i);
                         if (matchContrato && matchContrato[1]) {
-                             dados.contract = matchContrato[1].trim();
+                             dados.contrato = matchContrato[1].trim(); // Correção de nomenclatura interna
                         }
 
                         dados.ssid = document.getElementById('ssid')?.value.trim() || "XX";
                         dados.senha = document.getElementById('senhaSSID')?.value.trim() || "XX";
+
+                        // Captura o ponto de acesso na tela de provisionamento se disponível
+                        dados.pontoAcesso = document.getElementById('AuthenticationAccessPointTitle')?.value.trim() || "";
 
                         const todosInputs = document.querySelectorAll('input');
                         todosInputs.forEach(i => {
@@ -93,11 +123,16 @@
                             if (idStr.includes('porta') && !idStr.includes('olt') && val) dados.porta = parseInt(val, 10).toString();
                             if (idStr.includes('portaolt') && val) dados.porta = parseInt(val, 10).toString();
                             if (idStr.includes('idonu') || idStr.includes('id_onu')) dados.id = parseInt(val, 10).toString();
-                            if (idStr.includes('vlan') && val) dados.vlan = val; // Captura o campo da VLAN
+                            if (idStr.includes('vlan') && val) dados.vlan = val; // Captura o campo da VLAN se já existir preenchido
                         });
 
-                        // Nova String Secreta incluindo a VLAN no fim
-                        const stringSecreta = `OSIRDATA||${dados.serial}||${dados.ssid}||${dados.senha}||${dados.slot}||${dados.porta}||${dados.id}||${dados.contract}||${dados.vlan}`;
+                        // Se o sistema de provisionamento não der a VLAN pronta, o script calcula na hora
+                        if (dados.vlan === "XX" || dados.vlan === "") {
+                            dados.vlan = calcularVlanOsir(dados.pontoAcesso, dados.slot, dados.porta);
+                        }
+
+                        // Nova String Secreta incluindo a VLAN e o Ponto de Acesso extraído
+                        const stringSecreta = `OSIRDATA||${dados.serial}||${dados.ssid}||${dados.senha}||${dados.slot}||${dados.porta}||${dados.id}||${dados.contrato}||${dados.vlan}||${dados.pontoAcesso}`;
                         navigator.clipboard.writeText(stringSecreta).then(() => {
                             btnCopiar.textContent = `✅ Copiado!`;
                             btnCopiar.style.backgroundColor = '#10b981';
@@ -140,7 +175,8 @@
                                     serial: partes[1], ssid: partes[2], senha: partes[3],
                                     slot: partes[4], porta: partes[5], id: partes[6],
                                     contratoOriginal: partes[7] || "",
-                                    vlan: partes[8] || "XX" // Recebe a VLAN vinda da área de transferência
+                                    vlan: partes[8] || "XX",
+                                    pontoAcessoOriginal: partes[9] || ""
                                 };
 
                                  let contratoAtualVoalle = "";
@@ -160,6 +196,13 @@
                                     alert(`❌ OPERAÇÃO BLOQUEADA POR SEGURANÇA!\n\nVocê copiou os dados do contrato [${dados.contratoOriginal}], mas está tentando aplicar na aba do contrato [${contratoAtualVoalle}].`);
                                     return;
                                 }
+
+                                // Faz a leitura em tempo real do campo de Ponto de Acesso do Voalle para checar se é caso de VLAN fixa (2200)
+                                const inputPontoAcessoVoalle = document.getElementById('AuthenticationAccessPointTitle');
+                                const txtPontoAcesso = inputPontoAcessoVoalle ? inputPontoAcessoVoalle.value.trim() : dados.pontoAcessoOriginal;
+
+                                // Gera a VLAN final aplicando a regra de negócio exata
+                                const vlanFinal = calcularVlanOsir(txtPontoAcesso, dados.slot, dados.porta);
 
                                 const inputWifiSsid = document.getElementById('AuthenticationContractWifiName');
                                 const inputWifiPass = document.getElementById('AuthenticationContractWifiPassword');
@@ -194,8 +237,8 @@
                                         equipPrefixo = "Huawei Router";
                                     }
 
-                                    // Texto final atualizado incluindo a VLAN de forma organizada
-                                    let textoFinal = `${equipPrefixo} || SN: ${dados.serial} || Autentica na ZTE || XX - Porta XX || Slot OLT: ${dados.slot} Porta OLT: ${dados.porta} ID: ${dados.id} VLAN: ${dados.vlan} || SSID: ${dados.ssid} - Senha: ${dados.senha}`;
+                                    // Utiliza a vlanFinal calculada pelo motor interno do Script
+                                    let textoFinal = `${equipPrefixo} || SN: ${dados.serial} || Autentica na ZTE || XX - Porta XX || Slot OLT: ${dados.slot} Porta OLT: ${dados.porta} ID: ${dados.id} VLAN: ${vlanFinal} || SSID: ${dados.ssid} - Senha: ${dados.senha}`;
 
                                     inputComplementar.value = textoFinal;
                                     inputComplementar.dispatchEvent(new Event('input', { bubbles: true }));
