@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Contrato - Com ID da ONU Correto
 // @namespace    http://tampermonkey.net/
-// @version      12.5
+// @version      17.5
 // @description  Captura e preenche corretamente o ID da ONU
 // @author       Alisson Guerreiro / Modo Integrado
 // @match        *://*.osirnet.com.br/*
