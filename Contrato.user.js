@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Contrato - Janela com Controles de Tamanho
+// @name         Contrato - Substitui Chamado (Botão Ajustado)
 // @namespace    http://tampermonkey.net/
-// @version      19.1
-// @description  Janela flutuante com botões para ajustar tamanho
+// @version      19.7
+// @description  Botão roxo substitui o "Chamado" - Tamanho ajustado
 // @author       Alisson Guerreiro / Modo Integrado
 // @match        *://*.osirnet.com.br/*
 // @match        *://*.osir.net.br/*
@@ -29,10 +29,9 @@
         fonteMin: 9,
         fonteMax: 18,
         fontePadrao: 13,
-        passo: 20  // Quantos pixels aumenta/diminui
+        passo: 20
     };
 
-    // Estado atual da janela
     let estadoJanela = {
         largura: CONFIG_JANELA.larguraPadrao,
         altura: CONFIG_JANELA.alturaPadrao,
@@ -40,32 +39,20 @@
     };
 
     // =========================================================================
-    // FUNÇÃO PARA REDIMENSIONAR A JANELA FLUTUANTE
+    // FUNÇÕES DA JANELA
     // =========================================================================
     function redimensionarJanela(deltaLargura, deltaAltura, deltaFonte) {
         const janela = document.getElementById('osir-floating-window');
         if (!janela) return;
 
-        // Atualiza estado
-        estadoJanela.largura = Math.max(
-            CONFIG_JANELA.larguraMin,
-            Math.min(CONFIG_JANELA.larguraMax, estadoJanela.largura + deltaLargura)
-        );
-        estadoJanela.altura = Math.max(
-            CONFIG_JANELA.alturaMin,
-            Math.min(CONFIG_JANELA.alturaMax, estadoJanela.altura + deltaAltura)
-        );
-        estadoJanela.fonte = Math.max(
-            CONFIG_JANELA.fonteMin,
-            Math.min(CONFIG_JANELA.fonteMax, estadoJanela.fonte + deltaFonte)
-        );
+        estadoJanela.largura = Math.max(CONFIG_JANELA.larguraMin, Math.min(CONFIG_JANELA.larguraMax, estadoJanela.largura + deltaLargura));
+        estadoJanela.altura = Math.max(CONFIG_JANELA.alturaMin, Math.min(CONFIG_JANELA.alturaMax, estadoJanela.altura + deltaAltura));
+        estadoJanela.fonte = Math.max(CONFIG_JANELA.fonteMin, Math.min(CONFIG_JANELA.fonteMax, estadoJanela.fonte + deltaFonte));
 
-        // Aplica os novos tamanhos
         janela.style.width = estadoJanela.largura + 'px';
         janela.style.maxHeight = estadoJanela.altura + 'px';
         janela.style.fontSize = estadoJanela.fonte + 'px';
 
-        // Ajusta o tamanho da fonte dos elementos
         const previewTexto = janela.querySelector('.osir-preview-texto');
         if (previewTexto) {
             previewTexto.style.fontSize = Math.round(estadoJanela.fonte * 0.85) + 'px';
@@ -75,19 +62,12 @@
         if (sizeDisplay) {
             sizeDisplay.textContent = `${estadoJanela.largura}×${estadoJanela.altura}`;
         }
-
-        console.log(`📐 Janela redimensionada: ${estadoJanela.largura}×${estadoJanela.altura}, fonte: ${estadoJanela.fonte}px`);
     }
 
-    // =========================================================================
-    // FUNÇÃO PARA SALVAR PREFERÊNCIAS
-    // =========================================================================
     function salvarPreferencias() {
         try {
             localStorage.setItem('osir_janela_flutuante_prefs', JSON.stringify(estadoJanela));
-        } catch (e) {
-            console.warn('Não foi possível salvar preferências');
-        }
+        } catch (e) {}
     }
 
     function carregarPreferencias() {
@@ -98,116 +78,96 @@
                 estadoJanela.largura = prefs.largura || CONFIG_JANELA.larguraPadrao;
                 estadoJanela.altura = prefs.altura || CONFIG_JANELA.alturaPadrao;
                 estadoJanela.fonte = prefs.fonte || CONFIG_JANELA.fontePadrao;
-                console.log('✅ Preferências carregadas:', estadoJanela);
             }
-        } catch (e) {
-            console.warn('Não foi possível carregar preferências');
-        }
+        } catch (e) {}
     }
-
-    // Carrega preferências ao iniciar
     carregarPreferencias();
 
     // =========================================================================
-    // FUNÇÃO AUXILIAR: CALCULO INTELIGENTE DE VLAN
+    // CÁLCULO VLAN
     // =========================================================================
     function calcularVlanOsir(pontoAcesso, slotStr, portaStr) {
         const pa = (pontoAcesso || "").toUpperCase();
-
         if (pa.includes("STL_CE3_R") || pa.includes("STL_CE4_R") || pa.includes("TTN_LAN") || pa.includes("GAR")) {
             return "2200";
         }
-
         const slot = parseInt(slotStr, 10);
         const porta = parseInt(portaStr, 10);
-
         if (isNaN(slot) || isNaN(porta)) return "XX";
-
-        if (slot === 0) {
-            return (porta + 10).toString();
-        }
-
+        if (slot === 0) return (porta + 10).toString();
         const portaFormatada = porta < 10 ? "0" + porta : porta.toString();
         return slot.toString() + portaFormatada;
     }
 
     // =========================================================================
-    // FUNÇÃO PARA DETERMINAR TIPO DE EQUIPAMENTO
+    // DETERMINAR TIPO DE EQUIPAMENTO (APENAS PELO b/r)
     // =========================================================================
     function determinarTipoEquipamento(tipoProvisionamento, serial) {
         const tipo = (tipoProvisionamento || "").toLowerCase().trim();
         const serialUpper = (serial || "").toUpperCase();
 
         if (tipo === "r") {
-            if (serialUpper.startsWith("ZTEG") || serialUpper.startsWith("5A54")) {
-                return "ZTE Router";
-            } else if (serialUpper.startsWith("4857") || serialUpper.startsWith("HWTC")) {
-                return "Huawei Router";
-            } else if (serialUpper.startsWith("RCMG")) {
-                return "Raisecom Router";
-            }
+            if (serialUpper.startsWith("ZTEG") || serialUpper.startsWith("5A54")) return "ZTE Router";
+            if (serialUpper.startsWith("4857") || serialUpper.startsWith("HWTC")) return "Huawei Router";
+            if (serialUpper.startsWith("RCMG")) return "Raisecom Router";
             return "Router";
         }
-
         if (tipo === "b") {
-            if (serialUpper.startsWith("ZTEG") || serialUpper.startsWith("5A544") || serialUpper.startsWith("ZTEGD")) {
-                return "ZTE Bridge";
-            } else if (serialUpper.startsWith("4857") || serialUpper.startsWith("HWTC")) {
-                return "Huawei Bridge";
-            }
+            if (serialUpper.startsWith("ZTEG") || serialUpper.startsWith("5A544") || serialUpper.startsWith("ZTEGD")) return "ZTE Bridge";
+            if (serialUpper.startsWith("4857") || serialUpper.startsWith("HWTC")) return "Huawei Bridge";
             return "Bridge";
         }
-
-        if (serialUpper.startsWith("ZTEG") || serialUpper.startsWith("5A54")) {
-            return "ZTE Router";
-        } else if (serialUpper.startsWith("4857") || serialUpper.startsWith("HWTC")) {
-            return "Huawei Router";
-        } else if (serialUpper.startsWith("RCMG")) {
-            return "Raisecom Router";
-        } else if (serialUpper.startsWith("5A544") || serialUpper.startsWith("ZTEGD")) {
-            return "ZTE Bridge";
-        } else {
-            return "Equipamento Desconhecido";
-        }
+        // Fallback
+        if (serialUpper.startsWith("ZTEG") || serialUpper.startsWith("5A54")) return "ZTE Router";
+        if (serialUpper.startsWith("4857") || serialUpper.startsWith("HWTC")) return "Huawei Router";
+        if (serialUpper.startsWith("RCMG")) return "Raisecom Router";
+        if (serialUpper.startsWith("5A544") || serialUpper.startsWith("ZTEGD")) return "ZTE Bridge";
+        return "Equipamento Desconhecido";
     }
 
     // =========================================================================
-    // FUNÇÃO PARA CAPTURAR DADOS DE TELEFONIA
+    // VERIFICA SE PRECISA DE "Autentica na ZTE"
+    // =========================================================================
+    function precisaAutenticacao(tipoProvisionamento, serial) {
+        const tipo = (tipoProvisionamento || "").toLowerCase().trim();
+        const serialUpper = (serial || "").toUpperCase();
+
+        if (tipo === "b") return true;
+        if (tipo === "r") return false;
+
+        if (serialUpper.startsWith("ZTEG") || serialUpper.startsWith("5A54")) return false;
+        if (serialUpper.startsWith("4857") || serialUpper.startsWith("HWTC")) return false;
+        if (serialUpper.startsWith("RCMG")) return false;
+        if (serialUpper.startsWith("5A544") || serialUpper.startsWith("ZTEGD")) return true;
+        return false;
+    }
+
+    // =========================================================================
+    // CAPTURAR DADOS DE TELEFONIA
     // =========================================================================
     function capturarDadosTelefonia() {
-        const dadosTelefonia = {
-            temTelefonia: false,
-            numero: '',
-            senha: '',
-            ip: '',
-            dadosCompletos: false
-        };
-
+        const dados = { temTelefonia: false, numero: '', senha: '', ip: '', dadosCompletos: false };
         const inputNumero = document.getElementById('numeroTelefone01');
         if (inputNumero && inputNumero.value && inputNumero.value.trim() !== '') {
-            dadosTelefonia.temTelefonia = true;
-            dadosTelefonia.numero = inputNumero.value.trim();
+            dados.temTelefonia = true;
+            dados.numero = inputNumero.value.trim();
         }
-
         const inputSenha = document.getElementById('senhaTelefone');
         if (inputSenha && inputSenha.value && inputSenha.value.trim() !== '') {
-            dadosTelefonia.senha = inputSenha.value.trim();
+            dados.senha = inputSenha.value.trim();
         }
-
         const inputIp = document.getElementById('ipGerencia');
         if (inputIp && inputIp.value && inputIp.value.trim() !== '') {
-            dadosTelefonia.ip = inputIp.value.trim();
+            dados.ip = inputIp.value.trim();
         }
-
-        if (dadosTelefonia.temTelefonia && dadosTelefonia.numero && dadosTelefonia.senha) {
-            dadosTelefonia.dadosCompletos = true;
+        if (dados.temTelefonia && dados.numero && dados.senha) {
+            dados.dadosCompletos = true;
         }
-
-        return dadosTelefonia;
+        return dados;
     }
 
     // =========================================================================
-    // FUNÇÃO PARA MONTAR O COMPLEMENTO
+    // MONTAR COMPLEMENTO
     // =========================================================================
     function montarComplemento(dados, tipoEquip, vlanFinal) {
         let partes = [];
@@ -217,9 +177,12 @@
             equipamento += " + Telefonia";
         }
         partes.push(equipamento);
-
         partes.push(`SN: ${dados.serial}`);
-        partes.push("Autentica na ZTE");
+
+        if (precisaAutenticacao(dados.tipoProvisionamento, dados.serial)) {
+            partes.push("Autentica na ZTE");
+        }
+
         partes.push(`Slot OLT: ${dados.slot} Porta OLT: ${dados.porta} ID: ${dados.id}`);
         partes.push(`SSID: ${dados.ssid} - Senha: ${dados.senha}`);
 
@@ -238,19 +201,15 @@
     }
 
     // =========================================================================
-    // FUNÇÃO PARA CAPTURAR O TIPO PROVISIONAMENTO (b/r)
+    // CAPTURAR TIPO PROVISIONAMENTO (b/r)
     // =========================================================================
     function capturarTipoProvisionamento() {
         let input = document.getElementById('tipoProvisionamento');
-        if (input && input.value) {
-            return input.value.toLowerCase().trim();
-        }
+        if (input && input.value) return input.value.toLowerCase().trim();
 
         const inputsByName = document.querySelectorAll('input[name="tipoProvisionamento"]');
         for (let inp of inputsByName) {
-            if (inp.value) {
-                return inp.value.toLowerCase().trim();
-            }
+            if (inp.value) return inp.value.toLowerCase().trim();
         }
 
         const todosInputs = document.querySelectorAll('input');
@@ -259,56 +218,41 @@
             const name = (inp.name || "").toLowerCase();
             if ((id.includes('tipo') || name.includes('tipo')) && inp.value) {
                 const valor = inp.value.toLowerCase().trim();
-                if (valor === 'b' || valor === 'r') {
-                    return valor;
-                }
+                if (valor === 'b' || valor === 'r') return valor;
             }
         }
-
         return '';
     }
 
     // =========================================================================
-    // FUNÇÃO PARA EXTRAIR NÚMERO DO CONTRATO DA URL
+    // EXTRAIR CONTRATO DA URL
     // =========================================================================
     function extrairContratoDaURL() {
         const url = window.location.href;
         const match = url.match(/contract_panel\/(\d+)/);
-        if (match && match[1]) {
-            return match[1].trim();
-        }
-
+        if (match && match[1]) return match[1].trim();
         const textoPagina = document.body.innerText;
         const matchTexto = textoPagina.match(/Contrato\s*[#:]\s*(\d+)/i);
-        if (matchTexto && matchTexto[1]) {
-            return matchTexto[1].trim();
-        }
-
+        if (matchTexto && matchTexto[1]) return matchTexto[1].trim();
         return null;
     }
 
     // =========================================================================
-    // FUNÇÃO PARA CRIAR A JANELA FLUTUANTE COM CONTROLES
+    // JANELA FLUTUANTE
     // =========================================================================
     function criarJanelaFlutuante(dados, contratoAtual) {
         const contratoCopiado = dados.contrato;
-
         if (contratoCopiado && contratoAtual && contratoCopiado !== contratoAtual) {
             console.log(`🔴 Contrato diferente`);
             return;
         }
 
         const janelaExistente = document.getElementById('osir-floating-window');
-        if (janelaExistente) {
-            janelaExistente.remove();
-        }
+        if (janelaExistente) janelaExistente.remove();
 
         const tipoEquip = determinarTipoEquipamento(dados.tipoProvisionamento, dados.serial);
         const complementoPreview = montarComplemento(dados, tipoEquip, dados.vlan);
 
-        // =============================================================
-        // CRIA A JANELA PRINCIPAL
-        // =============================================================
         const janela = document.createElement('div');
         janela.id = 'osir-floating-window';
         janela.style.cssText = `
@@ -329,9 +273,7 @@
             font-size: ${estadoJanela.fonte}px;
         `;
 
-        // =============================================================
-        // CABEÇALHO COM CONTROLES DE TAMANHO
-        // =============================================================
+        // CABEÇALHO
         const header = document.createElement('div');
         header.style.cssText = `
             display: flex;
@@ -345,7 +287,6 @@
             flex-wrap: wrap;
         `;
 
-        // Título
         const titulo = document.createElement('span');
         titulo.textContent = `📋 Contrato #${contratoCopiado || '???'}`;
         titulo.style.cssText = `
@@ -355,94 +296,38 @@
             flex: 1;
         `;
 
-        // Grupo de controles
         const grupoControles = document.createElement('div');
-        grupoControles.style.cssText = `
-            display: flex;
-            align-items: center;
-            gap: 4px;
-        `;
+        grupoControles.style.cssText = `display: flex; align-items: center; gap: 4px;`;
 
-        // Botão Diminuir (-)
         const btnMenos = document.createElement('button');
         btnMenos.textContent = '−';
         btnMenos.title = 'Diminuir janela';
-        btnMenos.style.cssText = `
-            background: #e5e7eb;
-            border: none;
-            border-radius: 4px;
-            padding: 2px 8px;
-            cursor: pointer;
-            font-weight: bold;
-            font-size: 16px;
-            color: #374151;
-            transition: background 0.2s;
-            line-height: 1.2;
-        `;
+        btnMenos.style.cssText = `background: #e5e7eb; border: none; border-radius: 4px; padding: 2px 8px; cursor: pointer; font-weight: bold; font-size: 16px; color: #374151; transition: background 0.2s; line-height: 1.2;`;
         btnMenos.onmouseover = () => btnMenos.style.background = '#d1d5db';
         btnMenos.onmouseout = () => btnMenos.style.background = '#e5e7eb';
-        btnMenos.onclick = () => {
-            redimensionarJanela(-CONFIG_JANELA.passo, -CONFIG_JANELA.passo, -1);
-            salvarPreferencias();
-        };
+        btnMenos.onclick = () => { redimensionarJanela(-CONFIG_JANELA.passo, -CONFIG_JANELA.passo, -1); salvarPreferencias(); };
 
-        // Display de tamanho
         const sizeDisplay = document.createElement('span');
         sizeDisplay.id = 'osir-size-display';
         sizeDisplay.textContent = `${estadoJanela.largura}×${estadoJanela.altura}`;
-        sizeDisplay.style.cssText = `
-            font-size: ${Math.round(estadoJanela.fonte * 0.7)}px;
-            color: #6b7280;
-            padding: 0 4px;
-            min-width: 55px;
-            text-align: center;
-            font-family: monospace;
-        `;
+        sizeDisplay.style.cssText = `font-size: ${Math.round(estadoJanela.fonte * 0.7)}px; color: #6b7280; padding: 0 4px; min-width: 55px; text-align: center; font-family: monospace;`;
 
-        // Botão Aumentar (+)
         const btnMais = document.createElement('button');
         btnMais.textContent = '+';
         btnMais.title = 'Aumentar janela';
-        btnMais.style.cssText = `
-            background: #e5e7eb;
-            border: none;
-            border-radius: 4px;
-            padding: 2px 8px;
-            cursor: pointer;
-            font-weight: bold;
-            font-size: 16px;
-            color: #374151;
-            transition: background 0.2s;
-            line-height: 1.2;
-        `;
+        btnMais.style.cssText = `background: #e5e7eb; border: none; border-radius: 4px; padding: 2px 8px; cursor: pointer; font-weight: bold; font-size: 16px; color: #374151; transition: background 0.2s; line-height: 1.2;`;
         btnMais.onmouseover = () => btnMais.style.background = '#d1d5db';
         btnMais.onmouseout = () => btnMais.style.background = '#e5e7eb';
-        btnMais.onclick = () => {
-            redimensionarJanela(CONFIG_JANELA.passo, CONFIG_JANELA.passo, 1);
-            salvarPreferencias();
-        };
+        btnMais.onclick = () => { redimensionarJanela(CONFIG_JANELA.passo, CONFIG_JANELA.passo, 1); salvarPreferencias(); };
 
-        // Separador
         const sep = document.createElement('span');
         sep.textContent = '|';
         sep.style.cssText = `color: #d1d5db; padding: 0 2px;`;
 
-        // Botão Reset
         const btnReset = document.createElement('button');
         btnReset.textContent = '↺';
         btnReset.title = 'Resetar tamanho padrão';
-        btnReset.style.cssText = `
-            background: #e5e7eb;
-            border: none;
-            border-radius: 4px;
-            padding: 2px 8px;
-            cursor: pointer;
-            font-weight: bold;
-            font-size: 16px;
-            color: #374151;
-            transition: background 0.2s;
-            line-height: 1.2;
-        `;
+        btnReset.style.cssText = `background: #e5e7eb; border: none; border-radius: 4px; padding: 2px 8px; cursor: pointer; font-weight: bold; font-size: 16px; color: #374151; transition: background 0.2s; line-height: 1.2;`;
         btnReset.onmouseover = () => btnReset.style.background = '#d1d5db';
         btnReset.onmouseout = () => btnReset.style.background = '#e5e7eb';
         btnReset.onclick = () => {
@@ -453,27 +338,14 @@
             salvarPreferencias();
         };
 
-        // Botão Fechar
         const btnFechar = document.createElement('button');
         btnFechar.textContent = '✕';
         btnFechar.title = 'Fechar janela';
-        btnFechar.style.cssText = `
-            background: #ef4444;
-            border: none;
-            border-radius: 4px;
-            padding: 2px 10px;
-            cursor: pointer;
-            font-weight: bold;
-            font-size: 14px;
-            color: white;
-            transition: background 0.2s;
-            line-height: 1.2;
-        `;
+        btnFechar.style.cssText = `background: #ef4444; border: none; border-radius: 4px; padding: 2px 10px; cursor: pointer; font-weight: bold; font-size: 14px; color: white; transition: background 0.2s; line-height: 1.2;`;
         btnFechar.onmouseover = () => btnFechar.style.background = '#dc2626';
         btnFechar.onmouseout = () => btnFechar.style.background = '#ef4444';
         btnFechar.onclick = () => janela.remove();
 
-        // Monta grupo de controles
         grupoControles.appendChild(btnMenos);
         grupoControles.appendChild(sizeDisplay);
         grupoControles.appendChild(btnMais);
@@ -485,9 +357,7 @@
         header.appendChild(grupoControles);
         janela.appendChild(header);
 
-        // =============================================================
-        // BADGE DE CONFIRMAÇÃO
-        // =============================================================
+        // BADGE
         const badge = document.createElement('div');
         badge.style.cssText = `
             background: #d1fae5;
@@ -499,21 +369,15 @@
             margin-bottom: 12px;
             text-align: center;
         `;
-
         let badgeTexto = '✅ Contrato correspondente - Dados válidos';
-        if (dados.telefonia && dados.telefonia.temTelefonia) {
-            badgeTexto += ' 📞 Com Telefonia';
-        }
+        if (dados.telefonia && dados.telefonia.temTelefonia) badgeTexto += ' 📞 Com Telefonia';
         badge.textContent = badgeTexto;
         janela.appendChild(badge);
 
-        // =============================================================
-        // CONTEÚDO DA JANELA
-        // =============================================================
+        // CONTEÚDO
         const conteudo = document.createElement('div');
         conteudo.style.cssText = `font-size: ${estadoJanela.fonte}px;`;
 
-        // Campos
         const campos = [
             { label: '🔢 Contrato', valor: dados.contrato || 'Nenhum' },
             { label: '🔌 Serial', valor: dados.serial || 'XX' },
@@ -546,15 +410,9 @@
                 border-bottom: 1px solid #f3f4f6;
                 font-size: ${estadoJanela.fonte}px;
             `;
-
             const label = document.createElement('span');
             label.textContent = campo.label;
-            label.style.cssText = `
-                font-weight: 600;
-                color: #4b5563;
-                font-size: ${estadoJanela.fonte}px;
-            `;
-
+            label.style.cssText = `font-weight: 600; color: #4b5563; font-size: ${estadoJanela.fonte}px;`;
             const valor = document.createElement('span');
             valor.textContent = campo.valor;
             valor.style.cssText = `
@@ -569,13 +427,12 @@
                 white-space: nowrap;
                 font-size: ${Math.round(estadoJanela.fonte * 0.95)}px;
             `;
-
             linha.appendChild(label);
             linha.appendChild(valor);
             conteudo.appendChild(linha);
         });
 
-        // Preview do Complemento
+        // PREVIEW COMPLEMENTO
         const previewLabel = document.createElement('div');
         previewLabel.style.cssText = `
             margin-top: 12px;
@@ -603,7 +460,6 @@
         previewTexto.textContent = complementoPreview;
         conteudo.appendChild(previewTexto);
 
-        // Status
         if (dados.aplicado) {
             const status = document.createElement('div');
             status.style.cssText = `
@@ -620,7 +476,6 @@
             conteudo.appendChild(status);
         }
 
-        // Botão Copiar
         const btnCopiar = document.createElement('button');
         btnCopiar.textContent = '📋 Copiar Dados Novamente';
         btnCopiar.style.cssText = `
@@ -643,7 +498,6 @@
             const telefoniaStr = dados.telefonia && dados.telefonia.temTelefonia
                 ? `${dados.telefonia.numero}||${dados.telefonia.senha}||${dados.telefonia.ip || ''}`
                 : '||||';
-
             const stringSecreta = `OSIRDATA||${dados.serial}||${dados.ssid}||${dados.senha}||${dados.slot}||${dados.porta}||${dados.id}||${dados.contrato}||${dados.vlan}||${dados.pontoAcesso}||${dados.olt}||${dados.tipoProvisionamento}||${telefoniaStr}`;
             navigator.clipboard.writeText(stringSecreta).then(() => {
                 btnCopiar.textContent = '✅ Copiado!';
@@ -659,193 +513,245 @@
         janela.appendChild(conteudo);
         document.body.appendChild(janela);
 
-        // Auto-fechar após 5 minutos
         setTimeout(() => {
-            if (document.getElementById('osir-floating-window')) {
-                janela.remove();
-            }
+            if (document.getElementById('osir-floating-window')) janela.remove();
         }, 300000);
     }
 
     // =========================================================================
-    // PARTE 1: CAPTURA NA FILA DE PROVISIONAMENTO
+    // PARTE 1: CAPTURA NA FILA DE PROVISIONAMENTO (SUBSTITUI O CHAMADO)
     // =========================================================================
     if (window.location.href.includes(URL_ATENDIMENTO)) {
 
         function injetarBotaoDinamico() {
+            // Evita duplicar
             if (document.getElementById('btn-copiar-osir-nativo')) return;
 
-            const btnChecar = document.getElementById('checar');
+            // =============================================================
+            // BUSCA O BOTÃO "CHAMADO"
+            // =============================================================
+            let btnChamado = null;
+            const todosBotoes = document.querySelectorAll('button, input[type="button"], a, .btn, [role="button"]');
 
-            let btnConexao = null;
-            const todosBotoes = document.querySelectorAll('button, input[type="button"], a');
             for (let btn of todosBotoes) {
-                if (btn.textContent.trim() === "Conexão") {
-                    btnConexao = btn;
+                const texto = btn.textContent?.trim() || '';
+                const id = btn.id || '';
+                const href = btn.href || '';
+
+                if (texto === "Chamado" || id === "linkChamado" || href.includes('new_solicitations')) {
+                    btnChamado = btn;
+                    console.log('✅ Botão "Chamado" encontrado!');
                     break;
                 }
             }
 
-            if (btnChecar || btnConexao) {
-
-                const btnCopiar = document.createElement('a');
-                btnCopiar.id = 'btn-copiar-osir-nativo';
-                btnCopiar.textContent = '💾 Capturar e Criar Complemento';
-                btnCopiar.style.cssText = `
-                    display: inline-block;
-                    padding: 6px 12px;
-                    background-color: #8b5cf6;
-                    color: #ffffff;
-                    border: none;
-                    border-radius: 4px;
-                    cursor: pointer;
-                    font-weight: bold;
-                    font-size: 12px;
-                    margin-left: 6px;
-                    margin-right: 6px;
-                    text-decoration: none;
-                    text-align: center;
-                    vertical-align: middle;
-                    transition: background 0.2s;
-                `;
-
-                btnCopiar.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    try {
-                        let dados = {
-                            serial: "XX",
-                            ssid: "XX",
-                            senha: "XX",
-                            slot: "0",
-                            porta: "0",
-                            id: "0",
-                            contrato: "Nenhum",
-                            vlan: "XX",
-                            pontoAcesso: "",
-                            olt: "N/A",
-                            tipoProvisionamento: "",
-                            telefonia: {
-                                temTelefonia: false,
-                                numero: '',
-                                senha: '',
-                                ip: '',
-                                dadosCompletos: false
-                            }
-                        };
-
-                        const divTopo = document.body;
-                        const matchContrato = divTopo.innerText.match(/Cliente\s*-\s*(\d+)/i);
-                        if (matchContrato && matchContrato[1]) {
-                            dados.contrato = matchContrato[1].trim();
-                        }
-
-                        dados.tipoProvisionamento = capturarTipoProvisionamento();
-                        dados.telefonia = capturarDadosTelefonia();
-
-                        const inputPontoAcesso = document.getElementById('AuthenticationAccessPointTitle');
-                        if (inputPontoAcesso && inputPontoAcesso.value) {
-                            dados.pontoAcesso = inputPontoAcesso.value.trim();
-                        } else {
-                            const inputOlt = document.getElementById('olt');
-                            if (inputOlt && inputOlt.value) {
-                                dados.pontoAcesso = inputOlt.value.trim();
-                            }
-                        }
-
-                        dados.ssid = document.getElementById('ssid')?.value.trim() || "XX";
-                        dados.senha = document.getElementById('senhaSSID')?.value.trim() || "XX";
-
-                        const inputOlt = document.getElementById('olt');
-                        if (inputOlt && inputOlt.value) {
-                            dados.olt = inputOlt.value.trim();
-                        }
-
-                        const inputSlotOLT = document.getElementById('slotOLT');
-                        if (inputSlotOLT && inputSlotOLT.value) {
-                            dados.slot = parseInt(inputSlotOLT.value, 10).toString();
-                        }
-
-                        const inputPortaOLT = document.getElementById('portaOLT');
-                        if (inputPortaOLT && inputPortaOLT.value) {
-                            dados.porta = parseInt(inputPortaOLT.value, 10).toString();
-                        }
-
-                        const inputIdOnuOlt = document.getElementById('idOnuOlt');
-                        if (inputIdOnuOlt && inputIdOnuOlt.value) {
-                            dados.id = parseInt(inputIdOnuOlt.value, 10).toString();
-                        }
-
-                        const todosInputs = document.querySelectorAll('input');
-                        todosInputs.forEach(i => {
-                            const idStr = (i.id || "").toLowerCase();
-                            const val = i.value.trim();
-
-                            if (idStr.includes('serial') && val) dados.serial = val.toUpperCase();
-                            if (idStr.includes('vlan') && val) dados.vlan = val;
-                        });
-
-                        if (dados.vlan === "XX" || dados.vlan === "") {
-                            dados.vlan = calcularVlanOsir(dados.pontoAcesso, dados.slot, dados.porta);
-                        }
-
-                        const tipoEquip = determinarTipoEquipamento(dados.tipoProvisionamento, dados.serial);
-                        const complementoTexto = montarComplemento(dados, tipoEquip, dados.vlan);
-
-                        const telefoniaStr = dados.telefonia.temTelefonia
-                            ? `${dados.telefonia.numero}||${dados.telefonia.senha}||${dados.telefonia.ip || ''}`
-                            : '||||';
-
-                        const stringSecreta = `OSIRDATA||${dados.serial}||${dados.ssid}||${dados.senha}||${dados.slot}||${dados.porta}||${dados.id}||${dados.contrato}||${dados.vlan}||${dados.pontoAcesso}||${dados.olt}||${dados.tipoProvisionamento}||${telefoniaStr}||${complementoTexto}`;
-
-                        navigator.clipboard.writeText(stringSecreta).then(() => {
-                            const statusTelefonia = dados.telefonia.temTelefonia ? '📞' : '';
-                            btnCopiar.textContent = `✅ Pronto! ${statusTelefonia}`;
-                            btnCopiar.style.backgroundColor = '#10b981';
-
-                            const notificacao = document.createElement('div');
-                            notificacao.style.cssText = `
-                                position: fixed;
-                                bottom: 20px;
-                                right: 20px;
-                                background: #1f2937;
-                                color: white;
-                                padding: 12px 20px;
-                                border-radius: 8px;
-                                font-size: 12px;
-                                z-index: 99999;
-                                max-width: 400px;
-                                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-                                font-family: 'Segoe UI', Arial, sans-serif;
-                            `;
-                            notificacao.innerHTML = `
-                                <div style="font-weight: bold; margin-bottom: 4px;">✅ Complemento gerado!</div>
-                                <div style="font-size: 11px; opacity: 0.8; word-break: break-all;">${complementoTexto.substring(0, 100)}${complementoTexto.length > 100 ? '...' : ''}</div>
-                            `;
-                            document.body.appendChild(notificacao);
-
-                            setTimeout(() => {
-                                notificacao.remove();
-                                btnCopiar.textContent = '💾 Capturar e Criar Complemento';
-                                btnCopiar.style.backgroundColor = '#8b5cf6';
-                            }, 4000);
-                        });
-                    } catch (err) {
-                        console.error('Erro na captura:', err);
+            // Se não encontrou o "Chamado", procura o "Conexão"
+            if (!btnChamado) {
+                for (let btn of todosBotoes) {
+                    const texto = btn.textContent?.trim() || '';
+                    if (texto === "Conexão" || texto === "Conexao") {
+                        btnChamado = btn;
+                        console.log('⚠️ "Chamado" não encontrado. Usando "Conexão" como referência.');
+                        break;
                     }
-                });
-
-                if (btnChecar) {
-                    btnChecar.insertAdjacentElement('afterend', btnCopiar);
-                } else if (btnConexao) {
-                    btnConexao.parentElement.insertBefore(btnCopiar, btnConexao);
                 }
             }
+
+            if (!btnChamado) {
+                console.log('⚠️ Nenhum botão de referência encontrado.');
+                return;
+            }
+
+            // =============================================================
+            // CRIA O BOTÃO ROXO (TAMANHO AJUSTADO)
+            // =============================================================
+            const btnCopiar = document.createElement('a');
+            btnCopiar.id = 'btn-copiar-osir-nativo';
+            btnCopiar.type = 'button';
+            btnCopiar.textContent = '💾 Capturar';
+            btnCopiar.title = 'Capturar dados e criar complemento';
+            btnCopiar.style.cssText = `
+                display: inline-block;
+                padding: 4px 10px;
+                background-color: #8b5cf6;
+                color: #ffffff;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+                font-weight: bold;
+                font-size: 11px;
+                margin: 0 4px;
+                text-decoration: none;
+                text-align: center;
+                vertical-align: middle;
+                transition: background 0.2s;
+                line-height: 1.4;
+                height: 28px;
+                min-width: 70px;
+            `;
+
+            btnCopiar.onmouseover = () => btnCopiar.style.backgroundColor = '#7c3aed';
+            btnCopiar.onmouseout = () => btnCopiar.style.backgroundColor = '#8b5cf6';
+
+            // Evento do botão
+            btnCopiar.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+
+                try {
+                    let dados = {
+                        serial: "XX",
+                        ssid: "XX",
+                        senha: "XX",
+                        slot: "0",
+                        porta: "0",
+                        id: "0",
+                        contrato: "Nenhum",
+                        vlan: "XX",
+                        pontoAcesso: "",
+                        olt: "N/A",
+                        tipoProvisionamento: "",
+                        telefonia: { temTelefonia: false, numero: '', senha: '', ip: '', dadosCompletos: false }
+                    };
+
+                    // Captura contrato
+                    const divTopo = document.body;
+                    const matchContrato = divTopo.innerText.match(/Cliente\s*-\s*(\d+)/i);
+                    if (matchContrato && matchContrato[1]) {
+                        dados.contrato = matchContrato[1].trim();
+                    }
+
+                    // Captura tipo provisionamento (b/r)
+                    dados.tipoProvisionamento = capturarTipoProvisionamento();
+
+                    // Captura telefonia
+                    dados.telefonia = capturarDadosTelefonia();
+
+                    // Captura SSID e Senha
+                    dados.ssid = document.getElementById('ssid')?.value?.trim() || "XX";
+                    dados.senha = document.getElementById('senhaSSID')?.value?.trim() || "XX";
+
+                    // Captura Ponto Acesso
+                    const inputPontoAcesso = document.getElementById('AuthenticationAccessPointTitle');
+                    if (inputPontoAcesso && inputPontoAcesso.value) {
+                        dados.pontoAcesso = inputPontoAcesso.value.trim();
+                    } else {
+                        const inputOlt = document.getElementById('olt');
+                        if (inputOlt && inputOlt.value) {
+                            dados.pontoAcesso = inputOlt.value.trim();
+                        }
+                    }
+
+                    // Captura OLT
+                    const inputOlt = document.getElementById('olt');
+                    if (inputOlt && inputOlt.value) {
+                        dados.olt = inputOlt.value.trim();
+                    }
+
+                    // Captura Slot, Porta, ID
+                    const inputSlotOLT = document.getElementById('slotOLT');
+                    if (inputSlotOLT && inputSlotOLT.value) {
+                        dados.slot = parseInt(inputSlotOLT.value, 10).toString();
+                    }
+
+                    const inputPortaOLT = document.getElementById('portaOLT');
+                    if (inputPortaOLT && inputPortaOLT.value) {
+                        dados.porta = parseInt(inputPortaOLT.value, 10).toString();
+                    }
+
+                    const inputIdOnuOlt = document.getElementById('idOnuOlt');
+                    if (inputIdOnuOlt && inputIdOnuOlt.value) {
+                        dados.id = parseInt(inputIdOnuOlt.value, 10).toString();
+                    }
+
+                    // Captura serial
+                    const todosInputs = document.querySelectorAll('input');
+                    for (let inp of todosInputs) {
+                        const id = (inp.id || "").toLowerCase();
+                        if (id.includes('serial') && inp.value) {
+                            dados.serial = inp.value.trim().toUpperCase();
+                            break;
+                        }
+                    }
+
+                    // Captura VLAN ou calcula
+                    for (let inp of todosInputs) {
+                        const id = (inp.id || "").toLowerCase();
+                        if (id.includes('vlan') && inp.value) {
+                            dados.vlan = inp.value.trim();
+                            break;
+                        }
+                    }
+                    if (dados.vlan === "XX" || dados.vlan === "") {
+                        dados.vlan = calcularVlanOsir(dados.pontoAcesso, dados.slot, dados.porta);
+                    }
+
+                    // Determina tipo e monta complemento
+                    const tipoEquip = determinarTipoEquipamento(dados.tipoProvisionamento, dados.serial);
+                    const complementoTexto = montarComplemento(dados, tipoEquip, dados.vlan);
+
+                    // Monta string para clipboard
+                    const telefoniaStr = dados.telefonia.temTelefonia
+                        ? `${dados.telefonia.numero}||${dados.telefonia.senha}||${dados.telefonia.ip || ''}`
+                        : '||||';
+
+                    const stringSecreta = `OSIRDATA||${dados.serial}||${dados.ssid}||${dados.senha}||${dados.slot}||${dados.porta}||${dados.id}||${dados.contrato}||${dados.vlan}||${dados.pontoAcesso}||${dados.olt}||${dados.tipoProvisionamento}||${telefoniaStr}||${complementoTexto}`;
+
+                    navigator.clipboard.writeText(stringSecreta).then(() => {
+                        const statusTelefonia = dados.telefonia.temTelefonia ? '📞' : '';
+                        btnCopiar.textContent = `✅ ${statusTelefonia}`;
+                        btnCopiar.style.backgroundColor = '#10b981';
+
+                        // Notificação
+                        const notificacao = document.createElement('div');
+                        notificacao.style.cssText = `
+                            position: fixed;
+                            bottom: 20px;
+                            right: 20px;
+                            background: #1f2937;
+                            color: white;
+                            padding: 10px 16px;
+                            border-radius: 8px;
+                            font-size: 11px;
+                            z-index: 99999;
+                            max-width: 350px;
+                            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                            font-family: 'Segoe UI', Arial, sans-serif;
+                        `;
+                        notificacao.innerHTML = `
+                            <div style="font-weight: bold; margin-bottom: 3px;">✅ Complemento gerado!</div>
+                            <div style="font-size: 10px; opacity: 0.8; word-break: break-all;">${complementoTexto.substring(0, 80)}${complementoTexto.length > 80 ? '...' : ''}</div>
+                        `;
+                        document.body.appendChild(notificacao);
+
+                        setTimeout(() => {
+                            notificacao.remove();
+                            btnCopiar.textContent = '💾 Capturar';
+                            btnCopiar.style.backgroundColor = '#8b5cf6';
+                        }, 3500);
+                    });
+                } catch (err) {
+                    console.error('Erro na captura:', err);
+                }
+            });
+
+            // =============================================================
+            // SUBSTITUI O BOTÃO "CHAMADO" PELO NOSSO
+            // =============================================================
+            btnChamado.parentNode.replaceChild(btnCopiar, btnChamado);
+            console.log('✅ Botão "Chamado" substituído pelo "Capturar"!');
         }
+
+        // Tenta injetar a cada 800ms
         setInterval(injetarBotaoDinamico, 800);
+        // Tenta uma vez imediatamente
+        setTimeout(injetarBotaoDinamico, 100);
+        // Tenta novamente após 3 segundos
+        setTimeout(injetarBotaoDinamico, 3000);
     }
 
     // =========================================================================
-    // PARTE 2: INSERÇÃO NO ERP
+    // PARTE 2: INSERÇÃO NO ERP (LEITURA DO CLIPBOARD)
     // =========================================================================
     if (window.location.href.includes(URL_CONTRATO_VOALLE)) {
 
@@ -987,6 +893,7 @@
                                     inputWifiPass.dispatchEvent(new Event('input', { bubbles: true }));
                                 }
 
+                                // PREENCHE COMPLEMENTO
                                 const textareas = document.querySelectorAll('textarea, input[type="text"]');
                                 let inputComplementar = null;
                                 for (let el of textareas) {
@@ -997,7 +904,7 @@
                                     }
                                 }
 
-                                if (inputComplementar) {
+                                if (inputComplementar && inputComplementar.value.trim() === "") {
                                     let textoFinal;
 
                                     if (dados.complementoPreMontado) {
