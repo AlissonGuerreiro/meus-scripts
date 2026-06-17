@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Osir - Assistente de Chamado
 // @namespace    http://tampermonkey.net/
-// @version      1.0.7
-// @description  Alertas automáticos de planos e auditor de estoque para chamados Osirnet - REMOVIDO "telefonia"
+// @version      1.0.8
+// @description  Alertas automáticos de planos e auditor de estoque - CORRIGIDO
 // @author       Alisson Guerreiro
 // @match        https://erp.osirnet.com.br/*
 // @grant        none
@@ -13,7 +13,7 @@
     'use strict';
 
     // =========================================================================
-    // BANCO DE DADOS (MATERIAIS E FERRAMENTAS)
+    // BANCO DE DADOS (MATERIAIS E FERRAMENTAS) - MANTIDO
     // =========================================================================
     const MATERIAIS_PERMITIDOS = [
         "CONECTOR FAST SC/APC", "FIXA FIO PRETO UNIDADE", "SUPORTE ORGANIZADOR DE ROTEADOR",
@@ -98,7 +98,7 @@
     }
 
     // =========================================================================
-    // MÓDULO 1: NOTIFICADOR DE PLANOS
+    // MÓDULO 1: NOTIFICADOR DE PLANOS (CORRIGIDO)
     // =========================================================================
     let ultimaCategoria = null; let ultimoTextoOS = "";
 
@@ -111,10 +111,17 @@
             let divDemandaCompleta = null;
             const todasAsDivs = document.querySelectorAll('div');
 
+            // ✅ BUSCA MAIS ESPECÍFICA
             for (let div of todasAsDivs) {
                 if (div.innerText) {
                     let txt = normalizarTexto(div.innerText);
-                    if (txt.includes("planos") || txt.includes("servicos a serem ativados") || txt.includes("servicos") || txt.includes("troca de endereco") || txt.includes("custo r 80 00") || txt.includes("portabilidade")) {
+                    // Procura por seções específicas
+                    if (txt.includes("---- servicos ----") ||
+                        txt.includes("---- servicos a serem ativados ----") ||
+                        txt.includes("planos") ||
+                        txt.includes("troca de endereco") ||
+                        txt.includes("custo r 80 00") ||
+                        txt.includes("portabilidade")) {
                         if (!div.classList.contains('ql-editor') && !div.classList.contains('dx-htmleditor-content')) {
                             divDemandaCompleta = div;
                             break;
@@ -146,16 +153,20 @@
             }
 
             // =============================================================
-            // EXTRAI TUDO A PARTIR DE "---- Planos ----"
+            // EXTRAI TUDO A PARTIR DE "---- Planos ----" ou usa texto completo
             // =============================================================
             let textoParaAnalise = "";
             const matchPlanos = textoOSOriginal.match(/----\s*Planos\s*----\s*([\s\S]*?)$/i);
             if (matchPlanos && matchPlanos[1]) {
                 textoParaAnalise = matchPlanos[1].trim();
-                console.log('📋 Texto a partir de "Planos" encontrado (primeiros 200 caracteres):', textoParaAnalise.substring(0, 200));
             } else {
-                console.log('⚠️ Seção "Planos" não encontrada. Usando texto completo.');
-                textoParaAnalise = textoOSOriginal;
+                // ✅ SE NÃO ENCONTRAR PLANOS, PROCURA POR SEÇÕES DE SERVIÇOS
+                const matchServicos = textoOSOriginal.match(/----\s*Serviços\s*----\s*([\s\S]*?)$/i);
+                if (matchServicos && matchServicos[1]) {
+                    textoParaAnalise = matchServicos[1].trim();
+                } else {
+                    textoParaAnalise = textoOSOriginal;
+                }
             }
 
             if (!textoParaAnalise.trim()) {
@@ -164,41 +175,51 @@
             }
 
             // =============================================================
-            // ANALISA O TEXTO COMPLETO
+            // ANALISA O TEXTO COMPLETO (COM FLAGS PARA EVITAR DUPLICATAS)
             // =============================================================
             const textoOriginalParaAnalise = textoParaAnalise;
 
-            // ✅ SÓ DETECTA OSIRFONE (não mais "telefonia" ou "telefone")
+            // ✅ FLAGS PARA EVITAR DUPLICATAS
+            let alertaAdicionado = {
+                osirFone: false,
+                osirMovel: false,
+                wifiPro: false,
+                portabilidade: false
+            };
+
+            // ✅ SÓ DETECTA OSIRFONE
             const temOsirFone = /OsirFone|osirfone|Osir Fone|osir fone/i.test(textoOriginalParaAnalise);
-            if (temOsirFone) {
+            if (temOsirFone && !alertaAdicionado.osirFone) {
                 alertContainer.appendChild(criarCardAlerta("☎️ TELEFONIA FIXA: VERIFICAR SE FOI INSTALADA!", "#e3f2fd", "#0d47a1", "#1976d2"));
+                alertaAdicionado.osirFone = true;
             }
 
             // Verifica se contém OsirMóvel
             const temOsirMovel = /OsirMóvel|osirmovel|Osir Movel|osir movel|OSIRMÓVEL/i.test(textoOriginalParaAnalise);
-            if (temOsirMovel) {
+            if (temOsirMovel && !alertaAdicionado.osirMovel) {
                 alertContainer.appendChild(criarCardAlerta("📱 OSIRMÓVEL: VERIFICAR SE O CHIP FOI ENTREGUE!", "#fff3e0", "#e65100", "#ff9800"));
+                alertaAdicionado.osirMovel = true;
             }
 
             // Verifica se contém WiFi Pro
             const temWifiPro = /WiFi\s*Pro|Wi-Fi\s*Pro|WifiPro|wifipro|WiFi\s*PRO|WI-FI\s*PRO|wifi\s+profissional|wi-fi\s+profissional/i.test(textoOriginalParaAnalise);
-            if (temWifiPro) {
+            if (temWifiPro && !alertaAdicionado.wifiPro) {
                 alertContainer.appendChild(criarCardAlerta("🌐 WIFI-PRO: VERIFICAR SE FOI INSTALADO!", "#f3e5f5", "#4a148c", "#9c27b0"));
+                alertaAdicionado.wifiPro = true;
             }
 
             // Verifica se contém Portabilidade
             const temPortabilidade = /Portabilidade|portabilidade|PORTABILIDADE/i.test(textoOriginalParaAnalise);
-            if (temPortabilidade) {
+            if (temPortabilidade && !alertaAdicionado.portabilidade) {
                 alertContainer.appendChild(criarCardAlerta("💚 PORTABILIDADE ATIVA: VERIFICAR A PORTABILIDADE!", "#e8f5e9", "#1b5e20", "#4caf50"));
+                alertaAdicionado.portabilidade = true;
             }
-
-            console.log('✅ Análise concluída.');
 
         } catch (err) { console.error("Erro Notificador:", err); }
     }
 
     // =========================================================================
-    // MÓDULO 2: AUDITOR DE ESTOQUE
+    // MÓDULO 2: AUDITOR DE ESTOQUE (MANTIDO)
     // =========================================================================
     function abaConsumoEstaAtiva(doc) {
         const spansAba = doc.querySelectorAll('.MuiTab-wrapper');
