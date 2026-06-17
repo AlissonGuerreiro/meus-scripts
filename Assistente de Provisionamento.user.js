@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Osir - Assistente de Provisionamento
 // @namespace    http://tampermonkey.net/
-// @version      1.2.2
-// @description  "Copiar Dados Novamente" usa dados da caixinha
+// @version      1.2.3
+// @description  Apaga o MAC Address ao aplicar o complemento
 // @author       Alisson Guerreiro
 // @match        *://*.osirnet.com.br/*
 // @match        *://*.osir.net.br/*
@@ -757,7 +757,7 @@
         }
 
         // =============================================================
-        // BOTÃO "COPIAR DADOS NOVAMENTE" - USA OS DADOS DA CAIXINHA
+        // BOTÃO "COPIAR DADOS NOVAMENTE"
         // =============================================================
         const btnCopiar = document.createElement('button');
         btnCopiar.textContent = '📋 Copiar Dados Novamente';
@@ -778,7 +778,6 @@
         btnCopiar.onmouseout = () => btnCopiar.style.background = '#8b5cf6';
 
         btnCopiar.onclick = () => {
-            // ✅ USA OS DADOS QUE ESTÃO NA CAIXINHA (não do formulário)
             const dadosDaCaixinha = {
                 serial: dados.serial || "XX",
                 ssid: dados.ssid || "XX",
@@ -797,15 +796,11 @@
                 telefonia: dados.telefonia || { temTelefonia: false, numero: '', senha: '', ip: '' }
             };
 
-            // ✅ ATUALIZA O CLIPBOARD COM OS DADOS DA CAIXINHA
             const stringSecreta = montarStringOSIRDATA(dadosDaCaixinha);
             navigator.clipboard.writeText(stringSecreta).then(() => {
                 btnCopiar.textContent = '✅ Copiado!';
                 btnCopiar.style.background = '#10b981';
-                
-                // ✅ PREENCHE O FORMULÁRIO COM OS DADOS DA CAIXINHA
                 preencherFormulario(dadosDaCaixinha);
-                
                 setTimeout(() => {
                     btnCopiar.textContent = '📋 Copiar Dados Novamente';
                     btnCopiar.style.background = '#8b5cf6';
@@ -858,7 +853,7 @@
     }
 
     // =========================================================================
-    // FUNÇÃO PARA CRIAR O BOTÃO COMPLEMENTAR
+    // FUNÇÃO PARA CRIAR O BOTÃO COMPLEMENTAR (COM APAGAR MAC)
     // =========================================================================
     function injetarBotaoComplementar() {
         try {
@@ -1109,6 +1104,27 @@
                     // =============================================================
                     // 7. PREENCHE OS CAMPOS
                     // =============================================================
+                    // ✅ APAGA O MAC ADDRESS
+                    const inputMac = document.getElementById('AuthenticationContractMac');
+                    if (inputMac) {
+                        inputMac.value = '';
+                        inputMac.dispatchEvent(new Event('input', { bubbles: true }));
+                        inputMac.dispatchEvent(new Event('change', { bubbles: true }));
+                        console.log('✅ MAC Address apagado');
+                    } else {
+                        // Fallback: procura por qualquer campo com "mac" no nome
+                        const macInputs = document.querySelectorAll('input[name*="mac" i], input[id*="mac" i]');
+                        for (let inp of macInputs) {
+                            if (inp.type !== 'hidden' && inp.type !== 'submit') {
+                                inp.value = '';
+                                inp.dispatchEvent(new Event('input', { bubbles: true }));
+                                inp.dispatchEvent(new Event('change', { bubbles: true }));
+                                console.log(`✅ MAC Address apagado (campo: ${inp.id || inp.name})`);
+                                break;
+                            }
+                        }
+                    }
+
                     // VLAN
                     const inputVlan = document.getElementById('AuthenticationContractVlan');
                     if (inputVlan) {
