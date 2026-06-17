@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Osir - Assistente de Provisionamento
 // @namespace    http://tampermonkey.net/
-// @version      1.2.3
-// @description  Apaga o MAC Address ao aplicar o complemento
+// @version      1.2.6
+// @description  CORRIGIDO: Removido botão Capturar (Clipboard) que bugava o site
 // @author       Alisson Guerreiro
 // @match        *://*.osirnet.com.br/*
 // @match        *://*.osir.net.br/*
@@ -85,22 +85,25 @@
     carregarPreferencias();
 
     // =========================================================================
-    // CÁLCULO VLAN
+    // CÁLCULO VLAN (TRATA ESPAÇOS)
     // =========================================================================
     function calcularVlanOsir(pontoAcesso, slotStr, portaStr) {
         const pa = (pontoAcesso || "").toUpperCase();
-        
+
         if (pa.includes("STL_CE3_R") || pa.includes("STL_CE4_R") || pa.includes("TTN_LAN") || pa.includes("GAR")) {
             return "2200";
         }
 
-        if (slotStr === "XX" || portaStr === "XX" || slotStr === "" || portaStr === "") {
+        const slotTrim = (slotStr || "").trim();
+        const portaTrim = (portaStr || "").trim();
+
+        if (slotTrim === "XX" || portaTrim === "XX" || slotTrim === "" || portaTrim === "") {
             console.log('⚠️ Slot ou Porta vazios → VLAN: XX');
             return "XX";
         }
 
-        const slot = parseInt(slotStr, 10);
-        const porta = parseInt(portaStr, 10);
+        const slot = parseInt(slotTrim, 10);
+        const porta = parseInt(portaTrim, 10);
 
         if (isNaN(slot) || isNaN(porta)) return "XX";
 
@@ -117,7 +120,7 @@
     // =========================================================================
     function definirPortaWeb(tipoProvisionamento) {
         const tipo = (tipoProvisionamento || "").toLowerCase().trim();
-        
+
         if (tipo === "b") {
             console.log('🔵 Bridge detectado → Porta Web: 8092');
             return "8092";
@@ -126,7 +129,7 @@
             console.log('🔴 Router detectado → Porta Web: 80');
             return "80";
         }
-        
+
         console.log('⚠️ Tipo não identificado → Porta Web: 80 (padrão)');
         return "80";
     }
@@ -185,7 +188,7 @@
         // =============================================================
         const inputSlot = document.getElementById('AuthenticationContractSlotOlt');
         if (inputSlot && inputSlot.value && inputSlot.value.trim() !== '') {
-            dados.slot = parseInt(inputSlot.value, 10).toString();
+            dados.slot = parseInt(inputSlot.value.trim(), 10).toString();
             console.log(`✅ Slot OLT: ${dados.slot}`);
         } else {
             dados.slot = "XX";
@@ -197,7 +200,7 @@
         // =============================================================
         const inputPorta = document.getElementById('AuthenticationContractPortOlt');
         if (inputPorta && inputPorta.value && inputPorta.value.trim() !== '') {
-            dados.porta = parseInt(inputPorta.value, 10).toString();
+            dados.porta = parseInt(inputPorta.value.trim(), 10).toString();
             console.log(`✅ Porta OLT: ${dados.porta}`);
         } else {
             dados.porta = "XX";
@@ -209,7 +212,7 @@
         // =============================================================
         const inputIdOnu = document.getElementById('AuthenticationContractOltId');
         if (inputIdOnu && inputIdOnu.value !== undefined && inputIdOnu.value !== null && inputIdOnu.value !== '') {
-            const idValue = parseInt(inputIdOnu.value, 10);
+            const idValue = parseInt(inputIdOnu.value.trim(), 10);
             if (!isNaN(idValue)) {
                 dados.id = idValue.toString();
                 console.log(`✅ ID ONU: ${dados.id}`);
@@ -299,7 +302,7 @@
     }
 
     // =========================================================================
-    // DETERMINAR TIPO DE EQUIPAMENTO (SEM ZTE ROUTER)
+    // DETERMINAR TIPO DE EQUIPAMENTO (CORRIGIDO - ADICIONADO 5A54)
     // =========================================================================
     function determinarTipoEquipamento(tipoProvisionamento, serial) {
         const tipo = (tipoProvisionamento || "").toLowerCase().trim();
@@ -307,17 +310,20 @@
 
         if (tipo === "r") {
             if (serialUpper.startsWith("4857") || serialUpper.startsWith("HWTC")) return "Huawei Router";
+            if (serialUpper.startsWith("ZTEG") || serialUpper.startsWith("5A54")) return "ZTE Router";
             if (serialUpper.startsWith("RCMG")) return "Raisecom Router";
             return "Router";
         }
-        
+
         if (tipo === "b") {
             if (serialUpper.startsWith("4857") || serialUpper.startsWith("HWTC")) return "Huawei Bridge";
             if (serialUpper.startsWith("ZTEG") || serialUpper.startsWith("5A544") || serialUpper.startsWith("ZTEGD")) return "ZTE Bridge";
             return "Bridge";
         }
 
+        // Fallback
         if (serialUpper.startsWith("4857") || serialUpper.startsWith("HWTC")) return "Huawei Router";
+        if (serialUpper.startsWith("ZTEG") || serialUpper.startsWith("5A54")) return "ZTE Router";
         if (serialUpper.startsWith("RCMG")) return "Raisecom Router";
         if (serialUpper.startsWith("5A544") || serialUpper.startsWith("ZTEGD")) return "ZTE Bridge";
         return "Equipamento Desconhecido";
@@ -329,10 +335,10 @@
     function precisaAutenticacao(tipoProvisionamento, serial) {
         const tipo = (tipoProvisionamento || "").toLowerCase().trim();
         const serialUpper = (serial || "").toUpperCase();
-        
+
         if (tipo === "b") return true;
         if (tipo === "r") return false;
-        
+
         if (serialUpper.startsWith("ZTEG") || serialUpper.startsWith("5A54")) return false;
         if (serialUpper.startsWith("4857") || serialUpper.startsWith("HWTC")) return false;
         if (serialUpper.startsWith("RCMG")) return false;
@@ -365,7 +371,7 @@
     }
 
     // =========================================================================
-    // MONTAR COMPLEMENTO (USA SSID/SENHA DO FORMULÁRIO)
+    // MONTAR COMPLEMENTO (NÃO INCLUI SSID/SENHA XX)
     // =========================================================================
     function montarComplemento(dados, tipoEquip, vlanFinal) {
         let partes = [];
@@ -386,7 +392,11 @@
         }
 
         partes.push(`Slot OLT: ${dados.slot} Porta OLT: ${dados.porta} ID: ${dados.id}`);
-        partes.push(`SSID: ${dados.ssid} - Senha: ${dados.senha}`);
+
+        // SÓ ADICIONA SSID E SENHA SE NÃO FOREM "XX"
+        if (dados.ssid !== "XX" && dados.senha !== "XX") {
+            partes.push(`SSID: ${dados.ssid} - Senha: ${dados.senha}`);
+        }
 
         if (dados.telefonia && dados.telefonia.temTelefonia) {
             let telefoniaPart = `N° ${dados.telefonia.numero}`;
@@ -464,10 +474,13 @@
             inputPorta.dispatchEvent(new Event('input', { bubbles: true }));
         }
 
-        // ID ONU
+        // ID ONU - LIMPA SE FOR "XX"
         const inputIdOnu = document.getElementById('AuthenticationContractOltId');
-        if (inputIdOnu && dados.id && dados.id !== "XX") {
+        if (inputIdOnu && dados.id !== undefined && dados.id !== null && dados.id !== '' && dados.id !== "XX") {
             inputIdOnu.value = dados.id;
+            inputIdOnu.dispatchEvent(new Event('input', { bubbles: true }));
+        } else if (inputIdOnu) {
+            inputIdOnu.value = '';
             inputIdOnu.dispatchEvent(new Event('input', { bubbles: true }));
         }
 
@@ -682,7 +695,7 @@
             const label = document.createElement('span');
             label.textContent = campo.label;
             label.style.cssText = `font-weight: 600; color: #4b5563; font-size: ${estadoJanela.fonte}px;`;
-            
+
             let valorStyle = `
                 color: #1f2937;
                 font-family: 'Courier New', monospace;
@@ -695,7 +708,7 @@
                 white-space: nowrap;
                 font-size: ${Math.round(estadoJanela.fonte * 0.95)}px;
             `;
-            
+
             if (campo.label === '🔌 Porta Web') {
                 if (campo.valor === '8092') {
                     valorStyle += ' background: #fee2e2; color: #991b1b; font-weight: bold;';
@@ -703,7 +716,7 @@
                     valorStyle += ' background: #dbeafe; color: #1e40af; font-weight: bold;';
                 }
             }
-            
+
             const valor = document.createElement('span');
             valor.textContent = campo.valor;
             valor.style.cssText = valorStyle;
@@ -853,7 +866,7 @@
     }
 
     // =========================================================================
-    // FUNÇÃO PARA CRIAR O BOTÃO COMPLEMENTAR (COM APAGAR MAC)
+    // FUNÇÃO PARA CRIAR O BOTÃO COMPLEMENTAR
     // =========================================================================
     function injetarBotaoComplementar() {
         try {
@@ -915,7 +928,7 @@
                     let blocoTecnico = "";
 
                     const partes = textoAtual.split('||').map(p => p.trim()).filter(p => p !== "");
-                    
+
                     const termosTecnicos = [
                         "bridge", "router", "onu", "ektech", "huawei", "zte", "raisecom",
                         "sn:", "serial:", "slot olt:", "porta olt:", "id:",
@@ -926,7 +939,7 @@
                     partes.forEach(p => {
                         const pLower = p.toLowerCase();
                         const isTecnico = termosTecnicos.some(termo => pLower.includes(termo));
-                        
+
                         if (!isTecnico && notasInicio.length === 0 && !blocoTecnico) {
                             notasInicio.push(p);
                         }
@@ -950,7 +963,7 @@
                     let dados = capturarDadosDoFormulario();
                     let dadosClipboard = null;
                     let idCapturado = null;
-                    
+
                     try {
                         const texto = await navigator.clipboard.readText();
                         if (texto && texto.startsWith("OSIRDATA||")) {
@@ -981,17 +994,16 @@
                                 splitter: "XX",
                                 portaSplitter: "XX"
                             };
-                            
+
                             idCapturado = dadosClipboard.contrato;
                             console.log(`✅ ID capturado do clipboard: ${idCapturado}`);
-                            console.log('✅ Dados carregados do clipboard');
                         }
                     } catch (e) {
                         console.log('⚠️ Não foi possível ler o clipboard');
                     }
 
                     const contratoAtual = extrairContratoDaURL();
-                    
+
                     if (idCapturado && idCapturado !== "") {
                         dados.contrato = idCapturado;
                         console.log(`✅ Usando ID capturado: ${dados.contrato}`);
@@ -1112,8 +1124,8 @@
                         inputMac.dispatchEvent(new Event('change', { bubbles: true }));
                         console.log('✅ MAC Address apagado');
                     } else {
-                        // Fallback: procura por qualquer campo com "mac" no nome
-                        const macInputs = document.querySelectorAll('input[name*="mac" i], input[id*="mac" i]');
+                        // FALLBACK MAIS RESTRITO
+                        const macInputs = document.querySelectorAll('input[name="data[AuthenticationContract][mac]"], input#AuthenticationContractMac');
                         for (let inp of macInputs) {
                             if (inp.type !== 'hidden' && inp.type !== 'submit') {
                                 inp.value = '';
@@ -1133,12 +1145,14 @@
                         inputVlan.dispatchEvent(new Event('change', { bubbles: true }));
                     }
 
-                    // ID ONU
+                    // ID ONU - LIMPA SE FOR "XX"
                     const inputIdOnu = document.getElementById('AuthenticationContractOltId');
-                    if (inputIdOnu && dados.id !== undefined && dados.id !== null && dados.id !== '') {
+                    if (inputIdOnu && dados.id !== undefined && dados.id !== null && dados.id !== '' && dados.id !== "XX") {
                         inputIdOnu.value = dados.id;
                         inputIdOnu.dispatchEvent(new Event('input', { bubbles: true }));
-                        inputIdOnu.dispatchEvent(new Event('change', { bubbles: true }));
+                    } else if (inputIdOnu) {
+                        inputIdOnu.value = '';
+                        inputIdOnu.dispatchEvent(new Event('input', { bubbles: true }));
                     }
 
                     // Porta Web
@@ -1198,7 +1212,7 @@
     }
 
     // =========================================================================
-    // PARTE 1: CAPTURA NA FILA DE PROVISIONAMENTO (BOTÃO ROXO)
+    // PARTE 1: CAPTURA NA FILA DE PROVISIONAMENTO
     // =========================================================================
     if (window.location.href.includes(URL_ATENDIMENTO)) {
 
@@ -1208,12 +1222,12 @@
             let btnChamado = null;
             let btnConexao = null;
             const todosBotoes = document.querySelectorAll('button, input[type="button"], a, .btn, [role="button"]');
-            
+
             for (let btn of todosBotoes) {
                 const texto = btn.textContent?.trim() || '';
                 const id = btn.id || '';
                 const href = btn.href || '';
-                
+
                 if (texto === "Chamado" || id === "linkChamado" || href.includes('new_solicitations')) {
                     btnChamado = btn;
                     break;
@@ -1259,10 +1273,10 @@
             btnCopiar.addEventListener('click', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
-                
+
                 try {
                     const dados = capturarDadosDoFormulario();
-                    
+
                     if (dados.serial === "XX") {
                         const divTopo = document.body;
                         const matchContrato = divTopo.innerText.match(/Cliente\s*-\s*(\d+)/i);
@@ -1272,34 +1286,34 @@
                         }
                         dados.ssid = document.getElementById('ssid')?.value?.trim() || "XX";
                         dados.senha = document.getElementById('senhaSSID')?.value?.trim() || "XX";
-                        
+
                         const inputOlt = document.getElementById('olt');
                         if (inputOlt && inputOlt.value) dados.olt = inputOlt.value.trim();
-                        
+
                         const inputSlotOLT = document.getElementById('slotOLT');
                         if (inputSlotOLT && inputSlotOLT.value && inputSlotOLT.value.trim() !== '') {
-                            dados.slot = parseInt(inputSlotOLT.value, 10).toString();
+                            dados.slot = parseInt(inputSlotOLT.value.trim(), 10).toString();
                         } else {
                             dados.slot = "XX";
                         }
-                        
+
                         const inputPortaOLT = document.getElementById('portaOLT');
                         if (inputPortaOLT && inputPortaOLT.value && inputPortaOLT.value.trim() !== '') {
-                            dados.porta = parseInt(inputPortaOLT.value, 10).toString();
+                            dados.porta = parseInt(inputPortaOLT.value.trim(), 10).toString();
                         } else {
                             dados.porta = "XX";
                         }
-                        
+
                         const inputIdOnuOlt = document.getElementById('idOnuOlt');
                         if (inputIdOnuOlt && inputIdOnuOlt.value !== undefined && inputIdOnuOlt.value !== null && inputIdOnuOlt.value !== '') {
-                            const idValue = parseInt(inputIdOnuOlt.value, 10);
+                            const idValue = parseInt(inputIdOnuOlt.value.trim(), 10);
                             if (!isNaN(idValue)) {
                                 dados.id = idValue.toString();
                             }
                         } else {
                             dados.id = "XX";
                         }
-                        
+
                         const todosInputs = document.querySelectorAll('input');
                         for (let inp of todosInputs) {
                             const id = (inp.id || "").toLowerCase();
@@ -1381,20 +1395,26 @@
     }
 
     // =========================================================================
-    // PARTE 2: INSERÇÃO NO ERP (BOTÃO COMPLEMENTAR)
+    // PARTE 2: INSERÇÃO NO ERP
     // =========================================================================
-    if (window.location.href.includes(URL_CONTRATO_VOALLE) || 
+    if (window.location.href.includes(URL_CONTRATO_VOALLE) ||
         window.location.href.includes(URL_OPERACAO)) {
 
         const contratoAtual = extrairContratoDaURL();
 
-        const intervalos = [100, 500, 1000, 2000, 3000, 5000, 8000];
-        for (let tempo of intervalos) {
-            setTimeout(injetarBotaoComplementar, tempo);
-        }
+        // Tenta injetar o botão várias vezes
+        let tentativas = 0;
+        const maxTentativas = 10;
+        const intervaloInjecao = setInterval(() => {
+            tentativas++;
+            injetarBotaoComplementar();
+            if (document.getElementById('btn-osir-complementar') || tentativas >= maxTentativas) {
+                clearInterval(intervaloInjecao);
+                console.log(`✅ Botão injetado após ${tentativas} tentativas`);
+            }
+        }, 1500);
 
-        setInterval(injetarBotaoComplementar, 3000);
-
+        // Verifica dados no clipboard ao carregar
         async function verificarDadosNoClipboard() {
             try {
                 const texto = await navigator.clipboard.readText();
@@ -1407,9 +1427,9 @@
                         serial: partes[1] || "XX",
                         ssid: partes[2] || "XX",
                         senha: partes[3] || "XX",
-                        slot: partes[4] || "XX",
-                        porta: partes[5] || "XX",
-                        id: partes[6] || "XX",
+                        slot: partes[4] || "0",
+                        porta: partes[5] || "0",
+                        id: partes[6] || "0",
                         contrato: partes[7] || "Nenhum",
                         vlan: partes[8] || "XX",
                         pontoAcesso: partes[9] || "",
