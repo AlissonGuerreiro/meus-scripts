@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Osir - Assistente de Provisionamento
 // @namespace    http://tampermonkey.net/
-// @version      1.0.5
-// @description  Lê diretamente os campos do formulário para montar o complemento
+// @version      1.1.9
+// @description  Preenche SSID/Senha vazios com dados do clipboard
 // @author       Alisson Guerreiro
 // @match        *://*.osirnet.com.br/*
 // @match        *://*.osir.net.br/*
@@ -89,15 +89,46 @@
     // =========================================================================
     function calcularVlanOsir(pontoAcesso, slotStr, portaStr) {
         const pa = (pontoAcesso || "").toUpperCase();
+
         if (pa.includes("STL_CE3_R") || pa.includes("STL_CE4_R") || pa.includes("TTN_LAN") || pa.includes("GAR")) {
             return "2200";
         }
+
+        if (slotStr === "XX" || portaStr === "XX" || slotStr === "" || portaStr === "") {
+            console.log('⚠️ Slot ou Porta vazios → VLAN: XX');
+            return "XX";
+        }
+
         const slot = parseInt(slotStr, 10);
         const porta = parseInt(portaStr, 10);
+
         if (isNaN(slot) || isNaN(porta)) return "XX";
-        if (slot === 0) return (porta + 10).toString();
+
+        if (slot === 0) {
+            return (porta + 10).toString();
+        }
+
         const portaFormatada = porta < 10 ? "0" + porta : porta.toString();
         return slot.toString() + portaFormatada;
+    }
+
+    // =========================================================================
+    // FUNÇÃO PARA DEFINIR A PORTA WEB (b=8092, r=80)
+    // =========================================================================
+    function definirPortaWeb(tipoProvisionamento) {
+        const tipo = (tipoProvisionamento || "").toLowerCase().trim();
+
+        if (tipo === "b") {
+            console.log('🔵 Bridge detectado → Porta Web: 8092');
+            return "8092";
+        }
+        if (tipo === "r") {
+            console.log('🔴 Router detectado → Porta Web: 80');
+            return "80";
+        }
+
+        console.log('⚠️ Tipo não identificado → Porta Web: 80 (padrão)');
+        return "80";
     }
 
     // =========================================================================
@@ -108,9 +139,9 @@
             serial: "XX",
             ssid: "XX",
             senha: "XX",
-            slot: "0",
-            porta: "0",
-            id: "0",
+            slot: "XX",
+            porta: "XX",
+            id: "XX",
             contrato: "",
             vlan: "XX",
             pontoAcesso: "",
@@ -118,6 +149,7 @@
             splitter: "XX",
             portaSplitter: "XX",
             tipoProvisionamento: "",
+            portaWeb: "80",
             telefonia: { temTelefonia: false, numero: '', senha: '', ip: '' }
         };
 
@@ -152,73 +184,84 @@
         // 4. CAPTURA SLOT OLT
         // =============================================================
         const inputSlot = document.getElementById('AuthenticationContractSlotOlt');
-        if (inputSlot && inputSlot.value) {
+        if (inputSlot && inputSlot.value && inputSlot.value.trim() !== '') {
             dados.slot = parseInt(inputSlot.value, 10).toString();
             console.log(`✅ Slot OLT: ${dados.slot}`);
+        } else {
+            dados.slot = "XX";
+            console.log('⚠️ Slot OLT vazio → usando "XX"');
         }
 
         // =============================================================
         // 5. CAPTURA PORTA OLT
         // =============================================================
         const inputPorta = document.getElementById('AuthenticationContractPortOlt');
-        if (inputPorta && inputPorta.value) {
+        if (inputPorta && inputPorta.value && inputPorta.value.trim() !== '') {
             dados.porta = parseInt(inputPorta.value, 10).toString();
             console.log(`✅ Porta OLT: ${dados.porta}`);
+        } else {
+            dados.porta = "XX";
+            console.log('⚠️ Porta OLT vazia → usando "XX"');
         }
 
         // =============================================================
         // 6. CAPTURA ID ONU
         // =============================================================
         const inputIdOnu = document.getElementById('AuthenticationContractOltId');
-        if (inputIdOnu && inputIdOnu.value) {
-            dados.id = parseInt(inputIdOnu.value, 10).toString();
-            console.log(`✅ ID ONU: ${dados.id}`);
+        if (inputIdOnu && inputIdOnu.value !== undefined && inputIdOnu.value !== null && inputIdOnu.value !== '') {
+            const idValue = parseInt(inputIdOnu.value, 10);
+            if (!isNaN(idValue)) {
+                dados.id = idValue.toString();
+                console.log(`✅ ID ONU: ${dados.id}`);
+            }
+        } else {
+            dados.id = "XX";
+            console.log('⚠️ ID ONU vazio → usando "XX"');
         }
 
         // =============================================================
-        // 7. CAPTURA SSID
+        // 7. CAPTURA SSID (DO FORMULÁRIO)
         // =============================================================
         const inputSsid = document.getElementById('AuthenticationContractWifiName');
         if (inputSsid && inputSsid.value) {
             dados.ssid = inputSsid.value.trim();
-            console.log(`✅ SSID: ${dados.ssid}`);
+            console.log(`✅ SSID do formulário: ${dados.ssid}`);
+        } else {
+            dados.ssid = "XX";
+            console.log('⚠️ SSID vazio');
         }
 
         // =============================================================
-        // 8. CAPTURA SENHA WIFI
+        // 8. CAPTURA SENHA WIFI (DO FORMULÁRIO)
         // =============================================================
         const inputSenha = document.getElementById('AuthenticationContractWifiPassword');
         if (inputSenha && inputSenha.value) {
             dados.senha = inputSenha.value.trim();
-            console.log(`✅ Senha WiFi: ${dados.senha}`);
+            console.log(`✅ Senha do formulário: ${dados.senha}`);
+        } else {
+            dados.senha = "XX";
+            console.log('⚠️ Senha vazia');
         }
 
         // =============================================================
-        // 9. CAPTURA VLAN
-        // =============================================================
-        const inputVlan = document.getElementById('AuthenticationContractVlan');
-        if (inputVlan && inputVlan.value) {
-            dados.vlan = inputVlan.value.trim();
-            console.log(`✅ VLAN: ${dados.vlan}`);
-        }
-
-        // =============================================================
-        // 10. CAPTURA TIPO PROVISIONAMENTO (b/r)
+        // 9. CAPTURA TIPO PROVISIONAMENTO (b/r)
         // =============================================================
         const inputTipo = document.getElementById('tipoProvisionamento');
         if (inputTipo && inputTipo.value) {
             dados.tipoProvisionamento = inputTipo.value.toLowerCase().trim();
             console.log(`✅ Tipo Provisionamento: ${dados.tipoProvisionamento}`);
+        } else {
+            console.log('⚠️ Tipo Provisionamento não encontrado');
         }
 
         // =============================================================
-        // 11. CAPTURA CONTRATO DA URL
+        // 10. CAPTURA CONTRATO DA URL
         // =============================================================
         dados.contrato = extrairContratoDaURL() || "";
         console.log(`✅ Contrato: ${dados.contrato}`);
 
         // =============================================================
-        // 12. CAPTURA PONTO DE ACESSO (se existir)
+        // 11. CAPTURA PONTO DE ACESSO
         // =============================================================
         const inputPontoAcesso = document.getElementById('AuthenticationAccessPointTitle');
         if (inputPontoAcesso && inputPontoAcesso.value) {
@@ -227,7 +270,7 @@
         }
 
         // =============================================================
-        // 13. CAPTURA OLT (se existir)
+        // 12. CAPTURA OLT
         // =============================================================
         const inputOlt = document.getElementById('olt');
         if (inputOlt && inputOlt.value) {
@@ -236,17 +279,21 @@
         }
 
         // =============================================================
-        // 14. CAPTURA TELEFONIA
+        // 13. CAPTURA TELEFONIA
         // =============================================================
         dados.telefonia = capturarDadosTelefonia();
 
         // =============================================================
-        // 15. CALCULA VLAN SE NÃO TIVER
+        // 14. CALCULA VLAN
         // =============================================================
-        if (dados.vlan === "XX" || dados.vlan === "") {
-            dados.vlan = calcularVlanOsir(dados.pontoAcesso, dados.slot, dados.porta);
-            console.log(`✅ VLAN calculada: ${dados.vlan}`);
-        }
+        dados.vlan = calcularVlanOsir(dados.pontoAcesso, dados.slot, dados.porta);
+        console.log(`✅ VLAN: ${dados.vlan}`);
+
+        // =============================================================
+        // 15. DEFINE PORTA WEB
+        // =============================================================
+        dados.portaWeb = definirPortaWeb(dados.tipoProvisionamento);
+        console.log(`✅ Porta Web: ${dados.portaWeb}`);
 
         return dados;
     }
@@ -259,19 +306,20 @@
         const serialUpper = (serial || "").toUpperCase();
 
         if (tipo === "r") {
-            if (serialUpper.startsWith("ZTEG") || serialUpper.startsWith("5A54")) return "ZTE Router";
             if (serialUpper.startsWith("4857") || serialUpper.startsWith("HWTC")) return "Huawei Router";
+            if (serialUpper.startsWith("ZTEG") || serialUpper.startsWith("5A54")) return "ZTE Router";
             if (serialUpper.startsWith("RCMG")) return "Raisecom Router";
             return "Router";
         }
+
         if (tipo === "b") {
-            if (serialUpper.startsWith("ZTEG") || serialUpper.startsWith("5A544") || serialUpper.startsWith("ZTEGD")) return "ZTE Bridge";
             if (serialUpper.startsWith("4857") || serialUpper.startsWith("HWTC")) return "Huawei Bridge";
+            if (serialUpper.startsWith("ZTEG") || serialUpper.startsWith("5A544") || serialUpper.startsWith("ZTEGD")) return "ZTE Bridge";
             return "Bridge";
         }
-        // Fallback
-        if (serialUpper.startsWith("ZTEG") || serialUpper.startsWith("5A54")) return "ZTE Router";
+
         if (serialUpper.startsWith("4857") || serialUpper.startsWith("HWTC")) return "Huawei Router";
+        if (serialUpper.startsWith("ZTEG") || serialUpper.startsWith("5A54")) return "ZTE Router";
         if (serialUpper.startsWith("RCMG")) return "Raisecom Router";
         if (serialUpper.startsWith("5A544") || serialUpper.startsWith("ZTEGD")) return "ZTE Bridge";
         return "Equipamento Desconhecido";
@@ -319,42 +367,29 @@
     }
 
     // =========================================================================
-    // MONTAR COMPLEMENTO
+    // MONTAR COMPLEMENTO (USA SSID/SENHA DO FORMULÁRIO)
     // =========================================================================
     function montarComplemento(dados, tipoEquip, vlanFinal) {
         let partes = [];
 
-        // 1. TIPO DO EQUIPAMENTO
         let equipamento = tipoEquip;
         if (dados.telefonia && dados.telefonia.temTelefonia) {
             equipamento += " + Telefonia";
         }
         partes.push(equipamento);
-
-        // 2. SERIAL
         partes.push(`SN: ${dados.serial}`);
 
-        // 3. AUTENTICAÇÃO (só para Bridge)
         if (precisaAutenticacao(dados.tipoProvisionamento, dados.serial)) {
             partes.push("Autentica na ZTE");
         }
 
-        // 4. SPLITTER E PORTA (se existirem)
         if (dados.splitter && dados.splitter !== "XX" && dados.portaSplitter && dados.portaSplitter !== "XX") {
             partes.push(`${dados.splitter} - Porta: ${dados.portaSplitter}`);
         }
 
-        // 5. SLOT OLT, PORTA OLT, ID
         partes.push(`Slot OLT: ${dados.slot} Porta OLT: ${dados.porta} ID: ${dados.id}`);
+        partes.push(`SSID: ${dados.ssid} - Senha: ${dados.senha}`);
 
-        // 6. SSID E SENHA
-        if (dados.ssid && dados.ssid !== "XX" && dados.senha && dados.senha !== "XX") {
-            partes.push(`SSID: ${dados.ssid} - Senha: ${dados.senha}`);
-        } else {
-            partes.push(`SSID: ${dados.ssid} - Senha: ${dados.senha}`);
-        }
-
-        // 7. TELEFONIA (se tiver)
         if (dados.telefonia && dados.telefonia.temTelefonia) {
             let telefoniaPart = `N° ${dados.telefonia.numero}`;
             if (dados.telefonia.senha) {
@@ -528,9 +563,10 @@
             { label: '🖥️ OLT', valor: dados.olt || 'N/A' },
             { label: '📊 Slot OLT', valor: dados.slot || 'XX' },
             { label: '🔌 Porta OLT', valor: dados.porta || 'XX' },
-            { label: '🆔 ID ONU', valor: dados.id || 'XX' },
+            { label: '🆔 ID ONU', valor: dados.id !== undefined && dados.id !== null ? dados.id : 'XX' },
             { label: '🌐 VLAN Calculada', valor: dados.vlan || 'XX' },
-            { label: '📦 Tipo Equipamento', valor: tipoEquip }
+            { label: '📦 Tipo Equipamento', valor: tipoEquip },
+            { label: '🔌 Porta Web', valor: dados.portaWeb || '80' }
         ];
 
         if (dados.telefonia && dados.telefonia.temTelefonia) {
@@ -555,9 +591,8 @@
             const label = document.createElement('span');
             label.textContent = campo.label;
             label.style.cssText = `font-weight: 600; color: #4b5563; font-size: ${estadoJanela.fonte}px;`;
-            const valor = document.createElement('span');
-            valor.textContent = campo.valor;
-            valor.style.cssText = `
+
+            let valorStyle = `
                 color: #1f2937;
                 font-family: 'Courier New', monospace;
                 background: #f9fafb;
@@ -569,6 +604,19 @@
                 white-space: nowrap;
                 font-size: ${Math.round(estadoJanela.fonte * 0.95)}px;
             `;
+
+            if (campo.label === '🔌 Porta Web') {
+                if (campo.valor === '8092') {
+                    valorStyle += ' background: #fee2e2; color: #991b1b; font-weight: bold;';
+                } else if (campo.valor === '80') {
+                    valorStyle += ' background: #dbeafe; color: #1e40af; font-weight: bold;';
+                }
+            }
+
+            const valor = document.createElement('span');
+            valor.textContent = campo.valor;
+            valor.style.cssText = valorStyle;
+
             linha.appendChild(label);
             linha.appendChild(valor);
             conteudo.appendChild(linha);
@@ -639,7 +687,7 @@
             const telefoniaStr = dados.telefonia && dados.telefonia.temTelefonia
                 ? `${dados.telefonia.numero}||${dados.telefonia.senha}||${dados.telefonia.ip || ''}`
                 : '||||';
-            const stringSecreta = `OSIRDATA||${dados.serial}||${dados.ssid}||${dados.senha}||${dados.slot}||${dados.porta}||${dados.id}||${dados.contrato}||${dados.vlan}||${dados.pontoAcesso}||${dados.olt}||${dados.tipoProvisionamento}||${telefoniaStr}`;
+            const stringSecreta = `OSIRDATA||${dados.serial}||${dados.ssid}||${dados.senha}||${dados.slot}||${dados.porta}||${dados.id}||${dados.contrato}||${dados.vlan}||${dados.pontoAcesso}||${dados.olt}||${dados.tipoProvisionamento}||${telefoniaStr}||${dados.portaWeb}`;
             navigator.clipboard.writeText(stringSecreta).then(() => {
                 btnCopiar.textContent = '✅ Copiado!';
                 btnCopiar.style.background = '#10b981';
@@ -695,7 +743,7 @@
     }
 
     // =========================================================================
-    // FUNÇÃO PARA CRIAR O BOTÃO COMPLEMENTAR (LÊ DIRETO DO FORMULÁRIO)
+    // FUNÇÃO PARA CRIAR O BOTÃO COMPLEMENTAR
     // =========================================================================
     function injetarBotaoComplementar() {
         try {
@@ -748,30 +796,73 @@
 
             botao.addEventListener('click', async function() {
                 try {
-                    // =========================================================
-                    // 1. TENTA PEGAR DO CLIPBOARD PRIMEIRO (se tiver dados novos)
-                    // =========================================================
-                    let dados = null;
+                    // =============================================================
+                    // 1. PRESERVA AS NOTAS MANUAIS DO COMPLEMENTO ATUAL
+                    // =============================================================
+                    const textoAtual = inputComplementar.value || "";
+                    let notasInicio = [];
+                    let notasFim = [];
+                    let blocoTecnico = "";
+
+                    const partes = textoAtual.split('||').map(p => p.trim()).filter(p => p !== "");
+
+                    const termosTecnicos = [
+                        "bridge", "router", "onu", "ektech", "huawei", "zte", "raisecom",
+                        "sn:", "serial:", "slot olt:", "porta olt:", "id:",
+                        "ssid:", "senha:", "autentica na", "vlan:",
+                        "xx - porta xx", "equipamento desconhecido", "roteador mesh"
+                    ];
+
+                    partes.forEach(p => {
+                        const pLower = p.toLowerCase();
+                        const isTecnico = termosTecnicos.some(termo => pLower.includes(termo));
+
+                        if (!isTecnico && notasInicio.length === 0 && !blocoTecnico) {
+                            notasInicio.push(p);
+                        }
+                        else if (isTecnico && !blocoTecnico) {
+                            blocoTecnico = p;
+                        }
+                        else if (!isTecnico && blocoTecnico) {
+                            notasFim.push(p);
+                        }
+                        else if (isTecnico && blocoTecnico) {
+                            blocoTecnico += " || " + p;
+                        }
+                        else if (!isTecnico && blocoTecnico) {
+                            notasFim.push(p);
+                        }
+                    });
+
+                    console.log('📝 Notas de início preservadas:', notasInicio);
+                    console.log('🔧 Bloco técnico existente:', blocoTecnico);
+                    console.log('📝 Notas de fim preservadas:', notasFim);
+
+                    // =============================================================
+                    // 2. CAPTURA OS DADOS DO FORMULÁRIO E DO CLIPBOARD
+                    // =============================================================
+                    let dados = capturarDadosDoFormulario();
+                    let dadosClipboard = null;
 
                     try {
                         const texto = await navigator.clipboard.readText();
                         if (texto && texto.startsWith("OSIRDATA||")) {
-                            const partes = texto.split("||");
-                            const telefoniaParts = partes[12] ? partes[12].split('||') : [];
-                            const complementoPreMontado = partes[13] || '';
+                            const partesClip = texto.split("||");
+                            const telefoniaParts = partesClip[12] ? partesClip[12].split('||') : [];
+                            const portaWeb = partesClip[13] || '80';
 
-                            dados = {
-                                serial: partes[1] || "XX",
-                                ssid: partes[2] || "XX",
-                                senha: partes[3] || "XX",
-                                slot: partes[4] || "0",
-                                porta: partes[5] || "0",
-                                id: partes[6] || "0",
-                                contrato: partes[7] || "",
-                                vlan: partes[8] || "XX",
-                                pontoAcesso: partes[9] || "",
-                                olt: partes[10] || "N/A",
-                                tipoProvisionamento: partes[11] || "",
+                            dadosClipboard = {
+                                serial: partesClip[1] || "XX",
+                                ssid: partesClip[2] || "XX",
+                                senha: partesClip[3] || "XX",
+                                slot: partesClip[4] || "XX",
+                                porta: partesClip[5] || "XX",
+                                id: partesClip[6] || "XX",
+                                contrato: partesClip[7] || "",
+                                vlan: partesClip[8] || "XX",
+                                pontoAcesso: partesClip[9] || "",
+                                olt: partesClip[10] || "N/A",
+                                tipoProvisionamento: partesClip[11] || "",
                                 telefonia: {
                                     temTelefonia: telefoniaParts.length >= 3 && telefoniaParts[0] && telefoniaParts[0].trim() !== '',
                                     numero: telefoniaParts[0] || '',
@@ -779,7 +870,7 @@
                                     ip: telefoniaParts[2] || '',
                                     dadosCompletos: false
                                 },
-                                complementoPreMontado: complementoPreMontado,
+                                portaWeb: portaWeb,
                                 splitter: "XX",
                                 portaSplitter: "XX"
                             };
@@ -789,33 +880,83 @@
                         console.log('⚠️ Não foi possível ler o clipboard');
                     }
 
-                    // =========================================================
-                    // 2. FALLBACK: CAPTURA DIRETA DO FORMULÁRIO
-                    // =========================================================
-                    if (!dados || !dados.serial || dados.serial === "XX") {
-                        console.log('📋 Usando dados do formulário...');
-                        dados = capturarDadosDoFormulario();
-                        dados.complementoPreMontado = '';
-                    }
-
-                    // =========================================================
-                    // 3. VERIFICA SE O CONTRATO É O MESMO
-                    // =========================================================
                     const contratoAtual = extrairContratoDaURL();
                     if (contratoAtual && dados.contrato && dados.contrato !== contratoAtual) {
                         alert(`⚠️ Contrato diferente!\nDados do contrato #${dados.contrato}\nContrato atual: #${contratoAtual}`);
                         return;
                     }
 
-                    // =========================================================
-                    // 4. DETERMINA TIPO E MONTA COMPLEMENTO
-                    // =========================================================
+                    // =============================================================
+                    // 3. SSID E SENHA - PRIORIDADE: Formulário > Clipboard
+                    // =============================================================
+                    const inputWifiSsid = document.getElementById('AuthenticationContractWifiName');
+                    const inputWifiPass = document.getElementById('AuthenticationContractWifiPassword');
+
+                    const ssidAtual = inputWifiSsid?.value?.trim() || "";
+                    const senhaAtual = inputWifiPass?.value?.trim() || "";
+
+                    // Se o campo está vazio E temos dados do clipboard, preenche
+                    if (ssidAtual === "" && dadosClipboard && dadosClipboard.ssid && dadosClipboard.ssid !== "XX") {
+                        dados.ssid = dadosClipboard.ssid;
+                        if (inputWifiSsid) {
+                            inputWifiSsid.value = dados.ssid;
+                            inputWifiSsid.dispatchEvent(new Event('input', { bubbles: true }));
+                        }
+                        console.log(`✅ SSID preenchido do clipboard: ${dados.ssid}`);
+                    } else if (ssidAtual !== "") {
+                        dados.ssid = ssidAtual;
+                        console.log(`🔒 SSID preservado (já preenchido): ${ssidAtual}`);
+                    } else {
+                        dados.ssid = "XX";
+                        console.log('⚠️ SSID vazio');
+                    }
+
+                    if (senhaAtual === "" && dadosClipboard && dadosClipboard.senha && dadosClipboard.senha !== "XX") {
+                        dados.senha = dadosClipboard.senha;
+                        if (inputWifiPass) {
+                            inputWifiPass.value = dados.senha;
+                            inputWifiPass.dispatchEvent(new Event('input', { bubbles: true }));
+                        }
+                        console.log(`✅ Senha preenchida do clipboard: ${dados.senha}`);
+                    } else if (senhaAtual !== "") {
+                        dados.senha = senhaAtual;
+                        console.log(`🔒 Senha preservada (já preenchida): ${senhaAtual}`);
+                    } else {
+                        dados.senha = "XX";
+                        console.log('⚠️ Senha vazia');
+                    }
+
+                    // =============================================================
+                    // 4. MONTA O NOVO COMPLEMENTO
+                    // =============================================================
                     const tipoEquip = determinarTipoEquipamento(dados.tipoProvisionamento, dados.serial);
                     const vlanFinal = dados.vlan || calcularVlanOsir(dados.pontoAcesso, dados.slot, dados.porta);
+                    const portaWebCorreta = definirPortaWeb(dados.tipoProvisionamento);
+                    dados.portaWeb = portaWebCorreta;
 
-                    // =========================================================
-                    // 5. PREENCHE OS CAMPOS
-                    // =========================================================
+                    let novoBlocoTecnico = montarComplemento(dados, tipoEquip, vlanFinal);
+
+                    // =============================================================
+                    // 5. RECONSTRÓI O TEXTO COMPLETO
+                    // =============================================================
+                    let partesFinais = [];
+
+                    if (notasInicio.length > 0) {
+                        partesFinais.push(notasInicio.join(" || "));
+                    }
+
+                    partesFinais.push(novoBlocoTecnico);
+
+                    if (notasFim.length > 0) {
+                        partesFinais.push(notasFim.join(" || "));
+                    }
+
+                    const textoFinal = partesFinais.join(" || ");
+                    console.log('📝 Texto final com notas preservadas:', textoFinal);
+
+                    // =============================================================
+                    // 6. PREENCHE OS CAMPOS
+                    // =============================================================
                     // VLAN
                     const inputVlan = document.getElementById('AuthenticationContractVlan');
                     if (inputVlan) {
@@ -826,35 +967,21 @@
 
                     // ID ONU
                     const inputIdOnu = document.getElementById('AuthenticationContractOltId');
-                    if (inputIdOnu && dados.id && dados.id !== "0" && dados.id !== "XX") {
+                    if (inputIdOnu && dados.id !== undefined && dados.id !== null && dados.id !== '') {
                         inputIdOnu.value = dados.id;
                         inputIdOnu.dispatchEvent(new Event('input', { bubbles: true }));
                         inputIdOnu.dispatchEvent(new Event('change', { bubbles: true }));
                     }
 
-                    // SSID e Senha
-                    const inputWifiSsid = document.getElementById('AuthenticationContractWifiName');
-                    const inputWifiPass = document.getElementById('AuthenticationContractWifiPassword');
-
-                    if (inputWifiSsid && dados.ssid !== "XX") {
-                        inputWifiSsid.value = dados.ssid;
-                        inputWifiSsid.dispatchEvent(new Event('input', { bubbles: true }));
-                    }
-                    if (inputWifiPass && dados.senha !== "XX") {
-                        inputWifiPass.value = dados.senha;
-                        inputWifiPass.dispatchEvent(new Event('input', { bubbles: true }));
+                    // Porta Web
+                    const inputPortaWeb = document.getElementById('AuthenticationContractEquipmentPort');
+                    if (inputPortaWeb) {
+                        inputPortaWeb.value = portaWebCorreta;
+                        inputPortaWeb.dispatchEvent(new Event('input', { bubbles: true }));
+                        inputPortaWeb.dispatchEvent(new Event('change', { bubbles: true }));
                     }
 
-                    // =========================================================
-                    // 6. PREENCHE O COMPLEMENTO
-                    // =========================================================
-                    let textoFinal;
-                    if (dados.complementoPreMontado) {
-                        textoFinal = dados.complementoPreMontado;
-                    } else {
-                        textoFinal = montarComplemento(dados, tipoEquip, vlanFinal);
-                    }
-
+                    // Complemento
                     inputComplementar.value = textoFinal;
                     inputComplementar.dispatchEvent(new Event('input', { bubbles: true }));
                     inputComplementar.dispatchEvent(new Event('change', { bubbles: true }));
@@ -866,13 +993,11 @@
                         botao.style.backgroundColor = '#e11d48';
                     }, 2000);
 
-                    // =========================================================
-                    // 7. MOSTRA JANELA
-                    // =========================================================
                     criarJanelaFlutuante({
                         ...dados,
                         vlan: vlanFinal,
                         tipoEquipamento: tipoEquip,
+                        portaWeb: portaWebCorreta,
                         aplicado: true
                     }, contratoAtual);
 
@@ -883,7 +1008,7 @@
             });
 
             container.appendChild(botao);
-            console.log('✅ Botão "Criar/Atualizar Complementar" adicionado! (leitura direta do formulário)');
+            console.log('✅ Botão "Criar/Atualizar Complementar" adicionado!');
 
         } catch (err) {
             console.error('Erro ao injetar botão complementar:', err);
@@ -954,10 +1079,8 @@
                 e.stopPropagation();
 
                 try {
-                    // Usa a mesma função de captura do formulário
                     const dados = capturarDadosDoFormulario();
 
-                    // Se não tiver dados, tenta capturar da página
                     if (dados.serial === "XX") {
                         const divTopo = document.body;
                         const matchContrato = divTopo.innerText.match(/Cliente\s*-\s*(\d+)/i);
@@ -971,13 +1094,28 @@
                         if (inputOlt && inputOlt.value) dados.olt = inputOlt.value.trim();
 
                         const inputSlotOLT = document.getElementById('slotOLT');
-                        if (inputSlotOLT && inputSlotOLT.value) dados.slot = parseInt(inputSlotOLT.value, 10).toString();
+                        if (inputSlotOLT && inputSlotOLT.value && inputSlotOLT.value.trim() !== '') {
+                            dados.slot = parseInt(inputSlotOLT.value, 10).toString();
+                        } else {
+                            dados.slot = "XX";
+                        }
 
                         const inputPortaOLT = document.getElementById('portaOLT');
-                        if (inputPortaOLT && inputPortaOLT.value) dados.porta = parseInt(inputPortaOLT.value, 10).toString();
+                        if (inputPortaOLT && inputPortaOLT.value && inputPortaOLT.value.trim() !== '') {
+                            dados.porta = parseInt(inputPortaOLT.value, 10).toString();
+                        } else {
+                            dados.porta = "XX";
+                        }
 
                         const inputIdOnuOlt = document.getElementById('idOnuOlt');
-                        if (inputIdOnuOlt && inputIdOnuOlt.value) dados.id = parseInt(inputIdOnuOlt.value, 10).toString();
+                        if (inputIdOnuOlt && inputIdOnuOlt.value !== undefined && inputIdOnuOlt.value !== null && inputIdOnuOlt.value !== '') {
+                            const idValue = parseInt(inputIdOnuOlt.value, 10);
+                            if (!isNaN(idValue)) {
+                                dados.id = idValue.toString();
+                            }
+                        } else {
+                            dados.id = "XX";
+                        }
 
                         const todosInputs = document.querySelectorAll('input');
                         for (let inp of todosInputs) {
@@ -988,9 +1126,8 @@
                         }
                     }
 
-                    if (dados.vlan === "XX" || dados.vlan === "") {
-                        dados.vlan = calcularVlanOsir(dados.pontoAcesso, dados.slot, dados.porta);
-                    }
+                    dados.vlan = calcularVlanOsir(dados.pontoAcesso, dados.slot, dados.porta);
+                    dados.portaWeb = definirPortaWeb(dados.tipoProvisionamento);
 
                     const tipoEquip = determinarTipoEquipamento(dados.tipoProvisionamento, dados.serial);
                     const complementoTexto = montarComplemento(dados, tipoEquip, dados.vlan);
@@ -999,7 +1136,7 @@
                         ? `${dados.telefonia.numero}||${dados.telefonia.senha}||${dados.telefonia.ip || ''}`
                         : '||||';
 
-                    const stringSecreta = `OSIRDATA||${dados.serial}||${dados.ssid}||${dados.senha}||${dados.slot}||${dados.porta}||${dados.id}||${dados.contrato}||${dados.vlan}||${dados.pontoAcesso}||${dados.olt}||${dados.tipoProvisionamento}||${telefoniaStr}||${complementoTexto}`;
+                    const stringSecreta = `OSIRDATA||${dados.serial}||${dados.ssid}||${dados.senha}||${dados.slot}||${dados.porta}||${dados.id}||${dados.contrato}||${dados.vlan}||${dados.pontoAcesso}||${dados.olt}||${dados.tipoProvisionamento}||${telefoniaStr}||${dados.portaWeb}`;
 
                     navigator.clipboard.writeText(stringSecreta).then(() => {
                         const statusTelefonia = dados.telefonia.temTelefonia ? '📞' : '';
@@ -1055,7 +1192,6 @@
 
         const contratoAtual = extrairContratoDaURL();
 
-        // Tenta injetar o botão várias vezes
         const intervalos = [100, 500, 1000, 2000, 3000, 5000, 8000];
         for (let tempo of intervalos) {
             setTimeout(injetarBotaoComplementar, tempo);
@@ -1063,22 +1199,21 @@
 
         setInterval(injetarBotaoComplementar, 3000);
 
-        // Verifica dados no clipboard ao carregar
         async function verificarDadosNoClipboard() {
             try {
                 const texto = await navigator.clipboard.readText();
                 if (texto && texto.startsWith("OSIRDATA||")) {
                     const partes = texto.split("||");
                     const telefoniaParts = partes[12] ? partes[12].split('||') : [];
-                    const complementoPreMontado = partes[13] || '';
+                    const portaWeb = partes[13] || '80';
 
                     const dados = {
                         serial: partes[1] || "XX",
                         ssid: partes[2] || "XX",
                         senha: partes[3] || "XX",
-                        slot: partes[4] || "0",
-                        porta: partes[5] || "0",
-                        id: partes[6] || "0",
+                        slot: partes[4] || "XX",
+                        porta: partes[5] || "XX",
+                        id: partes[6] || "XX",
                         contrato: partes[7] || "Nenhum",
                         vlan: partes[8] || "XX",
                         pontoAcesso: partes[9] || "",
@@ -1091,7 +1226,7 @@
                             ip: telefoniaParts[2] || '',
                             dadosCompletos: false
                         },
-                        complementoPreMontado: complementoPreMontado
+                        portaWeb: portaWeb
                     };
 
                     if (dados.telefonia.temTelefonia && dados.telefonia.numero && dados.telefonia.senha) {
