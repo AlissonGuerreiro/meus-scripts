@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Osir - Assistente de Provisionamento
 // @namespace    http://tampermonkey.net/
-// @version      1.2.1
-// @description  Corrige "Copiar Dados Novamente" - atualiza janela existente
+// @version      1.2.2
+// @description  "Copiar Dados Novamente" usa dados da caixinha
 // @author       Alisson Guerreiro
 // @match        *://*.osirnet.com.br/*
 // @match        *://*.osir.net.br/*
@@ -426,18 +426,95 @@
     }
 
     // =========================================================================
-    // JANELA FLUTUANTE (COM ATUALIZAÇÃO)
+    // PREENCHER FORMULÁRIO COM DADOS DA CAIXINHA
     // =========================================================================
-    function criarJanelaFlutuante(dados, contratoAtual) {
-        // ✅ USA O CONTRATO CAPTURADO (SE TIVER)
-        const contratoParaExibir = dados.contrato && dados.contrato !== "Nenhum" ? dados.contrato : (contratoAtual || "???");
-        const contratoCopiado = dados.contrato;
-
-        if (contratoCopiado && contratoCopiado !== "Nenhum" && contratoAtual && contratoCopiado !== contratoAtual) {
-            console.warn(`⚠️ Contrato diferente: Capturado=${contratoCopiado}, URL=${contratoAtual}`);
+    function preencherFormulario(dados) {
+        // Serial
+        const inputSerial = document.getElementById('AuthenticationContractEquipmentSerialNumber');
+        if (inputSerial && dados.serial && dados.serial !== "XX") {
+            inputSerial.value = dados.serial;
+            inputSerial.dispatchEvent(new Event('input', { bubbles: true }));
         }
 
-        // ✅ REMOVE JANELA EXISTENTE ANTES DE CRIAR UMA NOVA
+        // Splitter
+        const inputSplitter = document.getElementById('AuthenticationSplitterPortTitle');
+        if (inputSplitter && dados.splitter && dados.splitter !== "XX") {
+            inputSplitter.value = dados.splitter;
+            inputSplitter.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+
+        // Porta Splitter
+        const inputPortaSplitter = document.getElementById('AuthenticationSplitterPortPort');
+        if (inputPortaSplitter && dados.portaSplitter && dados.portaSplitter !== "XX") {
+            inputPortaSplitter.value = dados.portaSplitter;
+            inputPortaSplitter.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+
+        // Slot OLT
+        const inputSlot = document.getElementById('AuthenticationContractSlotOlt');
+        if (inputSlot && dados.slot && dados.slot !== "XX") {
+            inputSlot.value = dados.slot;
+            inputSlot.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+
+        // Porta OLT
+        const inputPorta = document.getElementById('AuthenticationContractPortOlt');
+        if (inputPorta && dados.porta && dados.porta !== "XX") {
+            inputPorta.value = dados.porta;
+            inputPorta.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+
+        // ID ONU
+        const inputIdOnu = document.getElementById('AuthenticationContractOltId');
+        if (inputIdOnu && dados.id && dados.id !== "XX") {
+            inputIdOnu.value = dados.id;
+            inputIdOnu.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+
+        // SSID
+        const inputSsid = document.getElementById('AuthenticationContractWifiName');
+        if (inputSsid && dados.ssid && dados.ssid !== "XX") {
+            inputSsid.value = dados.ssid;
+            inputSsid.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+
+        // Senha
+        const inputSenha = document.getElementById('AuthenticationContractWifiPassword');
+        if (inputSenha && dados.senha && dados.senha !== "XX") {
+            inputSenha.value = dados.senha;
+            inputSenha.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+
+        // VLAN
+        const inputVlan = document.getElementById('AuthenticationContractVlan');
+        if (inputVlan && dados.vlan && dados.vlan !== "XX") {
+            inputVlan.value = dados.vlan;
+            inputVlan.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+
+        // Porta Web
+        const inputPortaWeb = document.getElementById('AuthenticationContractEquipmentPort');
+        if (inputPortaWeb && dados.portaWeb) {
+            inputPortaWeb.value = dados.portaWeb;
+            inputPortaWeb.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+
+        // Tipo Provisionamento
+        const inputTipo = document.getElementById('tipoProvisionamento');
+        if (inputTipo && dados.tipoProvisionamento) {
+            inputTipo.value = dados.tipoProvisionamento;
+            inputTipo.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+
+        console.log('✅ Formulário preenchido com os dados da caixinha');
+    }
+
+    // =========================================================================
+    // JANELA FLUTUANTE
+    // =========================================================================
+    function criarJanelaFlutuante(dados, contratoAtual) {
+        const contratoParaExibir = dados.contrato && dados.contrato !== "Nenhum" ? dados.contrato : (contratoAtual || "???");
+
         const janelaExistente = document.getElementById('osir-floating-window');
         if (janelaExistente) {
             janelaExistente.remove();
@@ -679,7 +756,9 @@
             conteudo.appendChild(status);
         }
 
-        // ✅ BOTÃO "COPIAR DADOS NOVAMENTE" - ATUALIZA A JANELA EXISTENTE
+        // =============================================================
+        // BOTÃO "COPIAR DADOS NOVAMENTE" - USA OS DADOS DA CAIXINHA
+        // =============================================================
         const btnCopiar = document.createElement('button');
         btnCopiar.textContent = '📋 Copiar Dados Novamente';
         btnCopiar.style.cssText = `
@@ -699,20 +778,33 @@
         btnCopiar.onmouseout = () => btnCopiar.style.background = '#8b5cf6';
 
         btnCopiar.onclick = () => {
-            // ✅ CAPTURA OS DADOS MAIS RECENTES DO FORMULÁRIO
-            const dadosAtualizados = capturarDadosDoFormulario();
-            
-            // ✅ ATUALIZA O CLIPBOARD COM OS NOVOS DADOS
-            const stringSecreta = montarStringOSIRDATA(dadosAtualizados);
+            // ✅ USA OS DADOS QUE ESTÃO NA CAIXINHA (não do formulário)
+            const dadosDaCaixinha = {
+                serial: dados.serial || "XX",
+                ssid: dados.ssid || "XX",
+                senha: dados.senha || "XX",
+                slot: dados.slot || "XX",
+                porta: dados.porta || "XX",
+                id: dados.id || "XX",
+                contrato: dados.contrato || "Nenhum",
+                vlan: dados.vlan || "XX",
+                pontoAcesso: dados.pontoAcesso || "",
+                olt: dados.olt || "N/A",
+                tipoProvisionamento: dados.tipoProvisionamento || "",
+                portaWeb: dados.portaWeb || "80",
+                splitter: dados.splitter || "XX",
+                portaSplitter: dados.portaSplitter || "XX",
+                telefonia: dados.telefonia || { temTelefonia: false, numero: '', senha: '', ip: '' }
+            };
+
+            // ✅ ATUALIZA O CLIPBOARD COM OS DADOS DA CAIXINHA
+            const stringSecreta = montarStringOSIRDATA(dadosDaCaixinha);
             navigator.clipboard.writeText(stringSecreta).then(() => {
-                btnCopiar.textContent = '✅ Atualizado!';
+                btnCopiar.textContent = '✅ Copiado!';
                 btnCopiar.style.background = '#10b981';
                 
-                // ✅ RECRIA A JANELA COM OS DADOS ATUALIZADOS
-                criarJanelaFlutuante({
-                    ...dadosAtualizados,
-                    aplicado: dados.aplicado || false
-                }, contratoAtual);
+                // ✅ PREENCHE O FORMULÁRIO COM OS DADOS DA CAIXINHA
+                preencherFormulario(dadosDaCaixinha);
                 
                 setTimeout(() => {
                     btnCopiar.textContent = '📋 Copiar Dados Novamente';
@@ -913,11 +1005,6 @@
                         console.log(`⚠️ Usando ID da URL (fallback): ${dados.contrato}`);
                     }
 
-                    if (idCapturado && contratoAtual && idCapturado !== contratoAtual) {
-                        console.warn(`⚠️ ATENÇÃO: ID capturado (${idCapturado}) é diferente do ID da URL (${contratoAtual})`);
-                        console.warn(`⚠️ Usando ID capturado: ${idCapturado}`);
-                    }
-
                     // =============================================================
                     // 3. SSID E SENHA - PRIORIDADE: Formulário > Clipboard
                     // =============================================================
@@ -982,6 +1069,12 @@
                         if (dadosClipboard.portaWeb && dadosClipboard.portaWeb !== "80") {
                             dados.portaWeb = dadosClipboard.portaWeb;
                         }
+                        if (dadosClipboard.splitter && dadosClipboard.splitter !== "XX") {
+                            dados.splitter = dadosClipboard.splitter;
+                        }
+                        if (dadosClipboard.portaSplitter && dadosClipboard.portaSplitter !== "XX") {
+                            dados.portaSplitter = dadosClipboard.portaSplitter;
+                        }
                         console.log('✅ Dados técnicos atualizados do clipboard');
                     }
 
@@ -1038,6 +1131,20 @@
                         inputPortaWeb.value = portaWebCorreta;
                         inputPortaWeb.dispatchEvent(new Event('input', { bubbles: true }));
                         inputPortaWeb.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+
+                    // Splitter
+                    const inputSplitter = document.getElementById('AuthenticationSplitterPortTitle');
+                    if (inputSplitter && dados.splitter && dados.splitter !== "XX") {
+                        inputSplitter.value = dados.splitter;
+                        inputSplitter.dispatchEvent(new Event('input', { bubbles: true }));
+                    }
+
+                    // Porta Splitter
+                    const inputPortaSplitter = document.getElementById('AuthenticationSplitterPortPort');
+                    if (inputPortaSplitter && dados.portaSplitter && dados.portaSplitter !== "XX") {
+                        inputPortaSplitter.value = dados.portaSplitter;
+                        inputPortaSplitter.dispatchEvent(new Event('input', { bubbles: true }));
                     }
 
                     // Complemento
@@ -1188,6 +1295,12 @@
                                 if (val === 'b' || val === 'r') {
                                     dados.tipoProvisionamento = val;
                                 }
+                            }
+                            if (id.includes('splitter') && id.includes('title') && inp.value) {
+                                dados.splitter = inp.value.trim();
+                            }
+                            if (id.includes('splitter') && id.includes('port') && inp.value) {
+                                dados.portaSplitter = inp.value.trim();
                             }
                         }
                     }
