@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Osir - Assistente de Provisionamento
 // @namespace    http://tampermonkey.net/
-// @version      1.2.9
-// @description  CORRIGIDO: Força Bridge -> 8092 e Router -> 80
+// @version      1.3.0
+// @description  CORRIGIDO: Novos nomes dos botões
 // @author       Alisson Guerreiro
 // @match        *://*.osirnet.com.br/*
 // @match        *://*.osir.net.br/*
@@ -85,11 +85,11 @@
     carregarPreferencias();
 
     // =========================================================================
-    // CÁLCULO VLAN (TRATA ESPAÇOS)
+    // CÁLCULO VLAN
     // =========================================================================
     function calcularVlanOsir(pontoAcesso, slotStr, portaStr) {
         const pa = (pontoAcesso || "").toUpperCase();
-
+        
         if (pa.includes("STL_CE3_R") || pa.includes("STL_CE4_R") || pa.includes("TTN_LAN") || pa.includes("GAR")) {
             return "2200";
         }
@@ -115,12 +115,11 @@
     }
 
     // =========================================================================
-    // FUNÇÃO PARA DEFINIR A PORTA WEB (REGRRA ABSOLUTA: b=8092, r=80)
+    // FUNÇÃO PARA DEFINIR A PORTA WEB (Bridge=8092, Router=80)
     // =========================================================================
     function definirPortaWeb(tipoProvisionamento) {
         const tipo = (tipoProvisionamento || "").toLowerCase().trim();
-
-        // ✅ REGRA ABSOLUTA
+        
         if (tipo === "b") {
             console.log('🔵 [PORTA WEB] Bridge detectado → 8092');
             return "8092";
@@ -129,7 +128,7 @@
             console.log('🔴 [PORTA WEB] Router detectado → 80');
             return "80";
         }
-
+        
         console.log('⚠️ [PORTA WEB] Tipo não identificado → 80 (padrão)');
         return "80";
     }
@@ -159,7 +158,7 @@
         const isAtendimento = window.location.href.includes(URL_ATENDIMENTO);
 
         // =============================================================
-        // 1. CAPTURA CONTRATO
+        // 1. CONTRATO
         // =============================================================
         if (isAtendimento) {
             const tituloModal = document.querySelector('.modal-title');
@@ -173,7 +172,7 @@
         }
 
         // =============================================================
-        // 2. CAPTURA SERIAL
+        // 2. SERIAL
         // =============================================================
         if (isAtendimento) {
             const el = document.getElementById('serialEquipamentoSynsuite');
@@ -264,7 +263,7 @@
         dados.telefonia = capturarDadosTelefonia();
 
         // =============================================================
-        // 7. CALCULA VLAN E PORTA WEB
+        // 7. VLAN E PORTA WEB
         // =============================================================
         dados.vlan = calcularVlanOsir(dados.pontoAcesso, dados.slot, dados.porta);
         dados.portaWeb = definirPortaWeb(dados.tipoProvisionamento);
@@ -437,13 +436,11 @@
             inputVlan.value = dados.vlan;
             inputVlan.dispatchEvent(new Event('input', { bubbles: true }));
         }
-        // ✅ CORREÇÃO CRÍTICA: SEMPRE FORÇA A PORTA WEB PELO TIPO
         const inputPortaWeb = document.getElementById('AuthenticationContractEquipmentPort');
         if (inputPortaWeb && dados.portaWeb) {
             inputPortaWeb.value = dados.portaWeb;
             inputPortaWeb.dispatchEvent(new Event('input', { bubbles: true }));
             inputPortaWeb.dispatchEvent(new Event('change', { bubbles: true }));
-            console.log(`✅ [PORTA WEB] Campo preenchido com: ${dados.portaWeb}`);
         }
         const inputTipo = document.getElementById('tipoProvisionamento');
         if (inputTipo && dados.tipoProvisionamento) {
@@ -617,7 +614,7 @@
             const label = document.createElement('span');
             label.textContent = campo.label;
             label.style.cssText = `font-weight: 600; color: #4b5563; font-size: ${estadoJanela.fonte}px;`;
-
+            
             let valorStyle = `
                 color: #1f2937;
                 font-family: 'Courier New', monospace;
@@ -630,7 +627,7 @@
                 white-space: nowrap;
                 font-size: ${Math.round(estadoJanela.fonte * 0.95)}px;
             `;
-
+            
             if (campo.label === '🔌 Porta Web') {
                 if (campo.valor === '8092') {
                     valorStyle += ' background: #fee2e2; color: #991b1b; font-weight: bold;';
@@ -638,7 +635,7 @@
                     valorStyle += ' background: #dbeafe; color: #1e40af; font-weight: bold;';
                 }
             }
-
+            
             const valor = document.createElement('span');
             valor.textContent = campo.valor;
             valor.style.cssText = valorStyle;
@@ -692,11 +689,11 @@
         }
 
         // =============================================================
-        // BOTÃO "COPIAR DADOS NOVAMENTE"
+        // BOTÃO "🔄 SINCRONIZAR CONTRATO" (ANTIGO "Copiar Dados Novamente")
         // =============================================================
-        const btnCopiar = document.createElement('button');
-        btnCopiar.textContent = '📋 Copiar Dados Novamente';
-        btnCopiar.style.cssText = `
+        const btnSincronizar = document.createElement('button');
+        btnSincronizar.textContent = '🔄 Sincronizar Contrato';
+        btnSincronizar.style.cssText = `
             width: 100%;
             margin-top: 12px;
             padding: 8px;
@@ -709,10 +706,10 @@
             font-size: ${Math.round(estadoJanela.fonte * 0.95)}px;
             transition: background 0.2s;
         `;
-        btnCopiar.onmouseover = () => btnCopiar.style.background = '#7c3aed';
-        btnCopiar.onmouseout = () => btnCopiar.style.background = '#8b5cf6';
+        btnSincronizar.onmouseover = () => btnSincronizar.style.background = '#7c3aed';
+        btnSincronizar.onmouseout = () => btnSincronizar.style.background = '#8b5cf6';
 
-        btnCopiar.onclick = () => {
+        btnSincronizar.onclick = () => {
             const dadosDaCaixinha = {
                 serial: dados.serial || "XX",
                 ssid: dados.ssid || "XX",
@@ -733,17 +730,17 @@
 
             const stringSecreta = montarStringOSIRDATA(dadosDaCaixinha);
             navigator.clipboard.writeText(stringSecreta).then(() => {
-                btnCopiar.textContent = '✅ Copiado!';
-                btnCopiar.style.background = '#10b981';
+                btnSincronizar.textContent = '✅ Sincronizado!';
+                btnSincronizar.style.background = '#10b981';
                 preencherFormulario(dadosDaCaixinha);
                 setTimeout(() => {
-                    btnCopiar.textContent = '📋 Copiar Dados Novamente';
-                    btnCopiar.style.background = '#8b5cf6';
+                    btnSincronizar.textContent = '🔄 Sincronizar Contrato';
+                    btnSincronizar.style.background = '#8b5cf6';
                 }, 2000);
             });
         };
 
-        conteudo.appendChild(btnCopiar);
+        conteudo.appendChild(btnSincronizar);
         janela.appendChild(conteudo);
         document.body.appendChild(janela);
 
@@ -784,7 +781,7 @@
     }
 
     // =========================================================================
-    // FUNÇÃO PARA CRIAR O BOTÃO COMPLEMENTAR (CORRIGIDA)
+    // FUNÇÃO PARA CRIAR O BOTÃO "✅ APLICAR COMPLEMENTO"
     // =========================================================================
     function injetarBotaoComplementar() {
         try {
@@ -814,10 +811,13 @@
                 container.appendChild(inputComplementar);
             }
 
+            // =============================================================
+            // ✅ BOTÃO "APLICAR COMPLEMENTO" (ANTIGO "Criar/Atualizar Complementar")
+            // =============================================================
             const botao = document.createElement('button');
             botao.id = 'btn-osir-complementar';
             botao.type = 'button';
-            botao.textContent = '⚡ Criar/Atualizar Complementar';
+            botao.textContent = '✅ Aplicar Complemento';
             botao.style.cssText = `
                 padding: 5px 14px;
                 background-color: #e11d48;
@@ -846,7 +846,7 @@
                     let blocoTecnico = "";
 
                     const partes = textoAtual.split('||').map(p => p.trim()).filter(p => p !== "");
-
+                    
                     const termosTecnicos = [
                         "bridge", "router", "onu", "ektech", "huawei", "zte", "raisecom",
                         "sn:", "serial:", "slot olt:", "porta olt:", "id:",
@@ -857,7 +857,7 @@
                     partes.forEach(p => {
                         const pLower = p.toLowerCase();
                         const isTecnico = termosTecnicos.some(termo => pLower.includes(termo));
-
+                        
                         if (!isTecnico && notasInicio.length === 0 && !blocoTecnico) {
                             notasInicio.push(p);
                         }
@@ -881,12 +881,11 @@
                     let dados = capturarDadosDoFormulario();
                     let dadosClipboard = null;
                     let idCapturado = null;
-
+                    
                     try {
                         const texto = await navigator.clipboard.readText();
-                        // ✅ LIMPA O TEXTO PARA EVITAR FALHAS
                         const textoLimpo = texto ? texto.trim() : '';
-
+                        
                         if (textoLimpo && textoLimpo.startsWith("OSIRDATA||")) {
                             const partesClip = textoLimpo.split("||");
                             const telefoniaParts = partesClip[12] ? partesClip[12].split('||') : [];
@@ -915,7 +914,7 @@
                                 splitter: "XX",
                                 portaSplitter: "XX"
                             };
-
+                            
                             idCapturado = dadosClipboard.contrato;
                             console.log(`✅ ID capturado do clipboard: ${idCapturado}`);
                             console.log(`✅ Tipo do clipboard: ${dadosClipboard.tipoProvisionamento}`);
@@ -925,8 +924,8 @@
                     }
 
                     const contratoAtual = extrairContratoDaURL();
-
-                    // ✅ PRIORIDADE MÁXIMA: DADOS DO CLIPBOARD SOBRESCREVEM O FORMULÁRIO
+                    
+                    // PRIORIDADE MÁXIMA: DADOS DO CLIPBOARD
                     if (dadosClipboard) {
                         if (dadosClipboard.tipoProvisionamento) {
                             dados.tipoProvisionamento = dadosClipboard.tipoProvisionamento;
@@ -1000,15 +999,14 @@
                     }
 
                     // =============================================================
-                    // 4. CALCULA VLAN E PORTA WEB (FORÇADO)
+                    // 4. VLAN E PORTA WEB (FORÇADO)
                     // =============================================================
                     const tipoEquip = determinarTipoEquipamento(dados.tipoProvisionamento, dados.serial);
                     const vlanFinal = dados.vlan || calcularVlanOsir(dados.pontoAcesso, dados.slot, dados.porta);
-
-                    // ✅ FORÇA A PORTA WEB PELO TIPO (REGRRA ABSOLUTA)
+                    
                     const portaWebCorreta = definirPortaWeb(dados.tipoProvisionamento);
                     dados.portaWeb = portaWebCorreta;
-                    console.log(`🔧 [FIX] Porta Web final definida: ${dados.portaWeb} (Baseado em: ${dados.tipoProvisionamento})`);
+                    console.log(`🔧 [FIX] Porta Web final definida: ${dados.portaWeb}`);
 
                     // =============================================================
                     // 5. MONTA O COMPLEMENTO
@@ -1050,7 +1048,7 @@
                         inputIdOnu.dispatchEvent(new Event('input', { bubbles: true }));
                     }
 
-                    // ✅ PORTA WEB (FORÇADO)
+                    // PORTA WEB (FORÇADO)
                     const inputPortaWeb = document.getElementById('AuthenticationContractEquipmentPort');
                     if (inputPortaWeb) {
                         inputPortaWeb.value = portaWebCorreta;
@@ -1079,7 +1077,7 @@
                     botao.textContent = '✅ Aplicado!';
                     botao.style.backgroundColor = '#22c55e';
                     setTimeout(() => {
-                        botao.textContent = '⚡ Criar/Atualizar Complementar';
+                        botao.textContent = '✅ Aplicar Complemento';
                         botao.style.backgroundColor = '#e11d48';
                     }, 2000);
 
@@ -1098,7 +1096,7 @@
             });
 
             container.appendChild(botao);
-            console.log('✅ Botão "Criar/Atualizar Complementar" adicionado!');
+            console.log('✅ Botão "Aplicar Complemento" adicionado!');
 
         } catch (err) {
             console.error('Erro ao injetar botão complementar:', err);
@@ -1116,12 +1114,12 @@
             let btnChamado = null;
             let btnConexao = null;
             const todosBotoes = document.querySelectorAll('button, input[type="button"], a, .btn, [role="button"]');
-
+            
             for (let btn of todosBotoes) {
                 const texto = btn.textContent?.trim() || '';
                 const id = btn.id || '';
                 const href = btn.href || '';
-
+                
                 if (texto === "Chamado" || id === "linkChamado" || href.includes('new_solicitations')) {
                     btnChamado = btn;
                     break;
@@ -1137,12 +1135,15 @@
                 return;
             }
 
-            const btnCopiar = document.createElement('a');
-            btnCopiar.id = 'btn-copiar-osir-nativo';
-            btnCopiar.type = 'button';
-            btnCopiar.textContent = '💾 Capturar';
-            btnCopiar.title = 'Capturar dados e criar complemento';
-            btnCopiar.style.cssText = `
+            // =============================================================
+            // 📥 BOTÃO "PREPARAR DADOS" (ANTIGO "Capturar")
+            // =============================================================
+            const btnPreparar = document.createElement('a');
+            btnPreparar.id = 'btn-copiar-osir-nativo';
+            btnPreparar.type = 'button';
+            btnPreparar.textContent = '📥 Preparar Dados';
+            btnPreparar.title = 'Preparar dados da fila para o contrato';
+            btnPreparar.style.cssText = `
                 display: inline-block;
                 padding: 4px 10px;
                 background-color: #8b5cf6;
@@ -1161,16 +1162,16 @@
                 height: 28px;
                 min-width: 70px;
             `;
-            btnCopiar.onmouseover = () => btnCopiar.style.backgroundColor = '#7c3aed';
-            btnCopiar.onmouseout = () => btnCopiar.style.backgroundColor = '#8b5cf6';
+            btnPreparar.onmouseover = () => btnPreparar.style.backgroundColor = '#7c3aed';
+            btnPreparar.onmouseout = () => btnPreparar.style.backgroundColor = '#8b5cf6';
 
-            btnCopiar.addEventListener('click', function(e) {
+            btnPreparar.addEventListener('click', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
-
+                
                 try {
                     const dados = capturarDadosDoFormulario();
-
+                    
                     if (dados.serial === "XX") {
                         // Fallback para capturar da modal
                         const divTopo = document.body;
@@ -1180,24 +1181,24 @@
                         }
                         dados.ssid = document.getElementById('ssid')?.value?.trim() || "XX";
                         dados.senha = document.getElementById('senhaSSID')?.value?.trim() || "XX";
-
+                        
                         const inputOlt = document.getElementById('olt');
                         if (inputOlt && inputOlt.value) dados.olt = inputOlt.value.trim();
-
+                        
                         const inputSlotOLT = document.getElementById('slotOLT');
                         if (inputSlotOLT && inputSlotOLT.value && inputSlotOLT.value.trim() !== '') {
                             dados.slot = parseInt(inputSlotOLT.value.trim(), 10).toString();
                         } else {
                             dados.slot = "XX";
                         }
-
+                        
                         const inputPortaOLT = document.getElementById('portaOLT');
                         if (inputPortaOLT && inputPortaOLT.value && inputPortaOLT.value.trim() !== '') {
                             dados.porta = parseInt(inputPortaOLT.value.trim(), 10).toString();
                         } else {
                             dados.porta = "XX";
                         }
-
+                        
                         const inputIdOnuOlt = document.getElementById('idOnuOlt');
                         if (inputIdOnuOlt && inputIdOnuOlt.value !== undefined && inputIdOnuOlt.value !== null && inputIdOnuOlt.value !== '') {
                             const idValue = parseInt(inputIdOnuOlt.value.trim(), 10);
@@ -1207,7 +1208,7 @@
                         } else {
                             dados.id = "XX";
                         }
-
+                        
                         const todosInputs = document.querySelectorAll('input');
                         for (let inp of todosInputs) {
                             const id = (inp.id || "").toLowerCase();
@@ -1245,8 +1246,8 @@
 
                     navigator.clipboard.writeText(stringSecreta).then(() => {
                         const statusTelefonia = dados.telefonia.temTelefonia ? '📞' : '';
-                        btnCopiar.textContent = `✅ ${statusTelefonia}`;
-                        btnCopiar.style.backgroundColor = '#10b981';
+                        btnPreparar.textContent = `✅ ${statusTelefonia}`;
+                        btnPreparar.style.backgroundColor = '#10b981';
 
                         const notificacao = document.createElement('div');
                         notificacao.style.cssText = `
@@ -1264,15 +1265,15 @@
                             font-family: 'Segoe UI', Arial, sans-serif;
                         `;
                         notificacao.innerHTML = `
-                            <div style="font-weight: bold; margin-bottom: 3px;">✅ Dados capturados!</div>
+                            <div style="font-weight: bold; margin-bottom: 3px;">✅ Dados preparados!</div>
                             <div style="font-size: 10px; opacity: 0.8;">Contrato: ${contratoParaClipboard}</div>
                         `;
                         document.body.appendChild(notificacao);
 
                         setTimeout(() => {
                             notificacao.remove();
-                            btnCopiar.textContent = '💾 Capturar';
-                            btnCopiar.style.backgroundColor = '#8b5cf6';
+                            btnPreparar.textContent = '📥 Preparar Dados';
+                            btnPreparar.style.backgroundColor = '#8b5cf6';
                         }, 3500);
                     });
                 } catch (err) {
@@ -1280,8 +1281,8 @@
                 }
             });
 
-            referencia.parentNode.replaceChild(btnCopiar, referencia);
-            console.log('✅ Botão "Chamado" substituído pelo "Capturar"!');
+            referencia.parentNode.replaceChild(btnPreparar, referencia);
+            console.log('✅ Botão "Preparar Dados" adicionado!');
         }
 
         setInterval(injetarBotaoDinamico, 800);
@@ -1292,7 +1293,7 @@
     // =========================================================================
     // PARTE 2: INSERÇÃO NO ERP
     // =========================================================================
-    if (window.location.href.includes(URL_CONTRATO_VOALLE) ||
+    if (window.location.href.includes(URL_CONTRATO_VOALLE) || 
         window.location.href.includes(URL_OPERACAO)) {
 
         const contratoAtual = extrairContratoDaURL();
