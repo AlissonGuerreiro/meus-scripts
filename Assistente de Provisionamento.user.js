@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Osir - Assistente de Provisionamento
 // @namespace    http://tampermonkey.net/
-// @version      1.1.9
-// @description  Preenche SSID/Senha vazios com dados do clipboard
+// @version      1.2.1
+// @description  Corrige "Copiar Dados Novamente" - atualiza janela existente
 // @author       Alisson Guerreiro
 // @match        *://*.osirnet.com.br/*
 // @match        *://*.osir.net.br/*
@@ -89,7 +89,7 @@
     // =========================================================================
     function calcularVlanOsir(pontoAcesso, slotStr, portaStr) {
         const pa = (pontoAcesso || "").toUpperCase();
-
+        
         if (pa.includes("STL_CE3_R") || pa.includes("STL_CE4_R") || pa.includes("TTN_LAN") || pa.includes("GAR")) {
             return "2200";
         }
@@ -117,7 +117,7 @@
     // =========================================================================
     function definirPortaWeb(tipoProvisionamento) {
         const tipo = (tipoProvisionamento || "").toLowerCase().trim();
-
+        
         if (tipo === "b") {
             console.log('🔵 Bridge detectado → Porta Web: 8092');
             return "8092";
@@ -126,7 +126,7 @@
             console.log('🔴 Router detectado → Porta Web: 80');
             return "80";
         }
-
+        
         console.log('⚠️ Tipo não identificado → Porta Web: 80 (padrão)');
         return "80";
     }
@@ -255,10 +255,10 @@
         }
 
         // =============================================================
-        // 10. CAPTURA CONTRATO DA URL
+        // 10. CAPTURA CONTRATO DA URL (FALLBACK)
         // =============================================================
         dados.contrato = extrairContratoDaURL() || "";
-        console.log(`✅ Contrato: ${dados.contrato}`);
+        console.log(`✅ Contrato (fallback): ${dados.contrato}`);
 
         // =============================================================
         // 11. CAPTURA PONTO DE ACESSO
@@ -299,7 +299,7 @@
     }
 
     // =========================================================================
-    // DETERMINAR TIPO DE EQUIPAMENTO
+    // DETERMINAR TIPO DE EQUIPAMENTO (SEM ZTE ROUTER)
     // =========================================================================
     function determinarTipoEquipamento(tipoProvisionamento, serial) {
         const tipo = (tipoProvisionamento || "").toLowerCase().trim();
@@ -307,11 +307,10 @@
 
         if (tipo === "r") {
             if (serialUpper.startsWith("4857") || serialUpper.startsWith("HWTC")) return "Huawei Router";
-            if (serialUpper.startsWith("ZTEG") || serialUpper.startsWith("5A54")) return "ZTE Router";
             if (serialUpper.startsWith("RCMG")) return "Raisecom Router";
             return "Router";
         }
-
+        
         if (tipo === "b") {
             if (serialUpper.startsWith("4857") || serialUpper.startsWith("HWTC")) return "Huawei Bridge";
             if (serialUpper.startsWith("ZTEG") || serialUpper.startsWith("5A544") || serialUpper.startsWith("ZTEGD")) return "ZTE Bridge";
@@ -319,7 +318,6 @@
         }
 
         if (serialUpper.startsWith("4857") || serialUpper.startsWith("HWTC")) return "Huawei Router";
-        if (serialUpper.startsWith("ZTEG") || serialUpper.startsWith("5A54")) return "ZTE Router";
         if (serialUpper.startsWith("RCMG")) return "Raisecom Router";
         if (serialUpper.startsWith("5A544") || serialUpper.startsWith("ZTEGD")) return "ZTE Bridge";
         return "Equipamento Desconhecido";
@@ -331,10 +329,10 @@
     function precisaAutenticacao(tipoProvisionamento, serial) {
         const tipo = (tipoProvisionamento || "").toLowerCase().trim();
         const serialUpper = (serial || "").toUpperCase();
-
+        
         if (tipo === "b") return true;
         if (tipo === "r") return false;
-
+        
         if (serialUpper.startsWith("ZTEG") || serialUpper.startsWith("5A54")) return false;
         if (serialUpper.startsWith("4857") || serialUpper.startsWith("HWTC")) return false;
         if (serialUpper.startsWith("RCMG")) return false;
@@ -418,17 +416,32 @@
     }
 
     // =========================================================================
-    // JANELA FLUTUANTE
+    // MONTAR STRING OSIRDATA
+    // =========================================================================
+    function montarStringOSIRDATA(dados) {
+        const telefoniaStr = dados.telefonia && dados.telefonia.temTelefonia
+            ? `${dados.telefonia.numero}||${dados.telefonia.senha}||${dados.telefonia.ip || ''}`
+            : '||||';
+        return `OSIRDATA||${dados.serial}||${dados.ssid}||${dados.senha}||${dados.slot}||${dados.porta}||${dados.id}||${dados.contrato}||${dados.vlan}||${dados.pontoAcesso}||${dados.olt}||${dados.tipoProvisionamento}||${telefoniaStr}||${dados.portaWeb}`;
+    }
+
+    // =========================================================================
+    // JANELA FLUTUANTE (COM ATUALIZAÇÃO)
     // =========================================================================
     function criarJanelaFlutuante(dados, contratoAtual) {
+        // ✅ USA O CONTRATO CAPTURADO (SE TIVER)
+        const contratoParaExibir = dados.contrato && dados.contrato !== "Nenhum" ? dados.contrato : (contratoAtual || "???");
         const contratoCopiado = dados.contrato;
-        if (contratoCopiado && contratoAtual && contratoCopiado !== contratoAtual) {
-            console.log(`🔴 Contrato diferente`);
-            return;
+
+        if (contratoCopiado && contratoCopiado !== "Nenhum" && contratoAtual && contratoCopiado !== contratoAtual) {
+            console.warn(`⚠️ Contrato diferente: Capturado=${contratoCopiado}, URL=${contratoAtual}`);
         }
 
+        // ✅ REMOVE JANELA EXISTENTE ANTES DE CRIAR UMA NOVA
         const janelaExistente = document.getElementById('osir-floating-window');
-        if (janelaExistente) janelaExistente.remove();
+        if (janelaExistente) {
+            janelaExistente.remove();
+        }
 
         const tipoEquip = determinarTipoEquipamento(dados.tipoProvisionamento, dados.serial);
         const complementoPreview = montarComplemento(dados, tipoEquip, dados.vlan);
@@ -453,6 +466,7 @@
             font-size: ${estadoJanela.fonte}px;
         `;
 
+        // CABEÇALHO
         const header = document.createElement('div');
         header.style.cssText = `
             display: flex;
@@ -467,7 +481,7 @@
         `;
 
         const titulo = document.createElement('span');
-        titulo.textContent = `📋 Contrato #${contratoCopiado || '???'}`;
+        titulo.textContent = `📋 Contrato #${contratoParaExibir}`;
         titulo.style.cssText = `
             font-weight: bold;
             font-size: ${Math.round(estadoJanela.fonte * 1.1)}px;
@@ -547,7 +561,7 @@
             margin-bottom: 12px;
             text-align: center;
         `;
-        let badgeTexto = '✅ Contrato correspondente - Dados válidos';
+        let badgeTexto = '✅ Dados válidos';
         if (dados.telefonia && dados.telefonia.temTelefonia) badgeTexto += ' 📞 Com Telefonia';
         badge.textContent = badgeTexto;
         janela.appendChild(badge);
@@ -591,7 +605,7 @@
             const label = document.createElement('span');
             label.textContent = campo.label;
             label.style.cssText = `font-weight: 600; color: #4b5563; font-size: ${estadoJanela.fonte}px;`;
-
+            
             let valorStyle = `
                 color: #1f2937;
                 font-family: 'Courier New', monospace;
@@ -604,7 +618,7 @@
                 white-space: nowrap;
                 font-size: ${Math.round(estadoJanela.fonte * 0.95)}px;
             `;
-
+            
             if (campo.label === '🔌 Porta Web') {
                 if (campo.valor === '8092') {
                     valorStyle += ' background: #fee2e2; color: #991b1b; font-weight: bold;';
@@ -612,7 +626,7 @@
                     valorStyle += ' background: #dbeafe; color: #1e40af; font-weight: bold;';
                 }
             }
-
+            
             const valor = document.createElement('span');
             valor.textContent = campo.valor;
             valor.style.cssText = valorStyle;
@@ -665,6 +679,7 @@
             conteudo.appendChild(status);
         }
 
+        // ✅ BOTÃO "COPIAR DADOS NOVAMENTE" - ATUALIZA A JANELA EXISTENTE
         const btnCopiar = document.createElement('button');
         btnCopiar.textContent = '📋 Copiar Dados Novamente';
         btnCopiar.style.cssText = `
@@ -684,13 +699,21 @@
         btnCopiar.onmouseout = () => btnCopiar.style.background = '#8b5cf6';
 
         btnCopiar.onclick = () => {
-            const telefoniaStr = dados.telefonia && dados.telefonia.temTelefonia
-                ? `${dados.telefonia.numero}||${dados.telefonia.senha}||${dados.telefonia.ip || ''}`
-                : '||||';
-            const stringSecreta = `OSIRDATA||${dados.serial}||${dados.ssid}||${dados.senha}||${dados.slot}||${dados.porta}||${dados.id}||${dados.contrato}||${dados.vlan}||${dados.pontoAcesso}||${dados.olt}||${dados.tipoProvisionamento}||${telefoniaStr}||${dados.portaWeb}`;
+            // ✅ CAPTURA OS DADOS MAIS RECENTES DO FORMULÁRIO
+            const dadosAtualizados = capturarDadosDoFormulario();
+            
+            // ✅ ATUALIZA O CLIPBOARD COM OS NOVOS DADOS
+            const stringSecreta = montarStringOSIRDATA(dadosAtualizados);
             navigator.clipboard.writeText(stringSecreta).then(() => {
-                btnCopiar.textContent = '✅ Copiado!';
+                btnCopiar.textContent = '✅ Atualizado!';
                 btnCopiar.style.background = '#10b981';
+                
+                // ✅ RECRIA A JANELA COM OS DADOS ATUALIZADOS
+                criarJanelaFlutuante({
+                    ...dadosAtualizados,
+                    aplicado: dados.aplicado || false
+                }, contratoAtual);
+                
                 setTimeout(() => {
                     btnCopiar.textContent = '📋 Copiar Dados Novamente';
                     btnCopiar.style.background = '#8b5cf6';
@@ -797,7 +820,7 @@
             botao.addEventListener('click', async function() {
                 try {
                     // =============================================================
-                    // 1. PRESERVA AS NOTAS MANUAIS DO COMPLEMENTO ATUAL
+                    // 1. PRESERVA AS NOTAS MANUAIS
                     // =============================================================
                     const textoAtual = inputComplementar.value || "";
                     let notasInicio = [];
@@ -805,7 +828,7 @@
                     let blocoTecnico = "";
 
                     const partes = textoAtual.split('||').map(p => p.trim()).filter(p => p !== "");
-
+                    
                     const termosTecnicos = [
                         "bridge", "router", "onu", "ektech", "huawei", "zte", "raisecom",
                         "sn:", "serial:", "slot olt:", "porta olt:", "id:",
@@ -816,7 +839,7 @@
                     partes.forEach(p => {
                         const pLower = p.toLowerCase();
                         const isTecnico = termosTecnicos.some(termo => pLower.includes(termo));
-
+                        
                         if (!isTecnico && notasInicio.length === 0 && !blocoTecnico) {
                             notasInicio.push(p);
                         }
@@ -834,16 +857,13 @@
                         }
                     });
 
-                    console.log('📝 Notas de início preservadas:', notasInicio);
-                    console.log('🔧 Bloco técnico existente:', blocoTecnico);
-                    console.log('📝 Notas de fim preservadas:', notasFim);
-
                     // =============================================================
                     // 2. CAPTURA OS DADOS DO FORMULÁRIO E DO CLIPBOARD
                     // =============================================================
                     let dados = capturarDadosDoFormulario();
                     let dadosClipboard = null;
-
+                    let idCapturado = null;
+                    
                     try {
                         const texto = await navigator.clipboard.readText();
                         if (texto && texto.startsWith("OSIRDATA||")) {
@@ -874,6 +894,9 @@
                                 splitter: "XX",
                                 portaSplitter: "XX"
                             };
+                            
+                            idCapturado = dadosClipboard.contrato;
+                            console.log(`✅ ID capturado do clipboard: ${idCapturado}`);
                             console.log('✅ Dados carregados do clipboard');
                         }
                     } catch (e) {
@@ -881,9 +904,18 @@
                     }
 
                     const contratoAtual = extrairContratoDaURL();
-                    if (contratoAtual && dados.contrato && dados.contrato !== contratoAtual) {
-                        alert(`⚠️ Contrato diferente!\nDados do contrato #${dados.contrato}\nContrato atual: #${contratoAtual}`);
-                        return;
+                    
+                    if (idCapturado && idCapturado !== "") {
+                        dados.contrato = idCapturado;
+                        console.log(`✅ Usando ID capturado: ${dados.contrato}`);
+                    } else {
+                        dados.contrato = contratoAtual || "";
+                        console.log(`⚠️ Usando ID da URL (fallback): ${dados.contrato}`);
+                    }
+
+                    if (idCapturado && contratoAtual && idCapturado !== contratoAtual) {
+                        console.warn(`⚠️ ATENÇÃO: ID capturado (${idCapturado}) é diferente do ID da URL (${contratoAtual})`);
+                        console.warn(`⚠️ Usando ID capturado: ${idCapturado}`);
                     }
 
                     // =============================================================
@@ -895,7 +927,6 @@
                     const ssidAtual = inputWifiSsid?.value?.trim() || "";
                     const senhaAtual = inputWifiPass?.value?.trim() || "";
 
-                    // Se o campo está vazio E temos dados do clipboard, preenche
                     if (ssidAtual === "" && dadosClipboard && dadosClipboard.ssid && dadosClipboard.ssid !== "XX") {
                         dados.ssid = dadosClipboard.ssid;
                         if (inputWifiSsid) {
@@ -906,9 +937,6 @@
                     } else if (ssidAtual !== "") {
                         dados.ssid = ssidAtual;
                         console.log(`🔒 SSID preservado (já preenchido): ${ssidAtual}`);
-                    } else {
-                        dados.ssid = "XX";
-                        console.log('⚠️ SSID vazio');
                     }
 
                     if (senhaAtual === "" && dadosClipboard && dadosClipboard.senha && dadosClipboard.senha !== "XX") {
@@ -921,13 +949,44 @@
                     } else if (senhaAtual !== "") {
                         dados.senha = senhaAtual;
                         console.log(`🔒 Senha preservada (já preenchida): ${senhaAtual}`);
-                    } else {
-                        dados.senha = "XX";
-                        console.log('⚠️ Senha vazia');
                     }
 
                     // =============================================================
-                    // 4. MONTA O NOVO COMPLEMENTO
+                    // 4. SE TIVER DADOS DO CLIPBOARD, USA OS DADOS TÉCNICOS
+                    // =============================================================
+                    if (dadosClipboard) {
+                        if (dadosClipboard.serial && dadosClipboard.serial !== "XX") {
+                            dados.serial = dadosClipboard.serial;
+                        }
+                        if (dadosClipboard.slot && dadosClipboard.slot !== "XX") {
+                            dados.slot = dadosClipboard.slot;
+                        }
+                        if (dadosClipboard.porta && dadosClipboard.porta !== "XX") {
+                            dados.porta = dadosClipboard.porta;
+                        }
+                        if (dadosClipboard.id && dadosClipboard.id !== "XX") {
+                            dados.id = dadosClipboard.id;
+                        }
+                        if (dadosClipboard.vlan && dadosClipboard.vlan !== "XX") {
+                            dados.vlan = dadosClipboard.vlan;
+                        }
+                        if (dadosClipboard.pontoAcesso && dadosClipboard.pontoAcesso !== "") {
+                            dados.pontoAcesso = dadosClipboard.pontoAcesso;
+                        }
+                        if (dadosClipboard.olt && dadosClipboard.olt !== "N/A") {
+                            dados.olt = dadosClipboard.olt;
+                        }
+                        if (dadosClipboard.tipoProvisionamento && dadosClipboard.tipoProvisionamento !== "") {
+                            dados.tipoProvisionamento = dadosClipboard.tipoProvisionamento;
+                        }
+                        if (dadosClipboard.portaWeb && dadosClipboard.portaWeb !== "80") {
+                            dados.portaWeb = dadosClipboard.portaWeb;
+                        }
+                        console.log('✅ Dados técnicos atualizados do clipboard');
+                    }
+
+                    // =============================================================
+                    // 5. MONTA O NOVO COMPLEMENTO
                     // =============================================================
                     const tipoEquip = determinarTipoEquipamento(dados.tipoProvisionamento, dados.serial);
                     const vlanFinal = dados.vlan || calcularVlanOsir(dados.pontoAcesso, dados.slot, dados.porta);
@@ -937,7 +996,7 @@
                     let novoBlocoTecnico = montarComplemento(dados, tipoEquip, vlanFinal);
 
                     // =============================================================
-                    // 5. RECONSTRÓI O TEXTO COMPLETO
+                    // 6. RECONSTRÓI O TEXTO COMPLETO
                     // =============================================================
                     let partesFinais = [];
 
@@ -955,7 +1014,7 @@
                     console.log('📝 Texto final com notas preservadas:', textoFinal);
 
                     // =============================================================
-                    // 6. PREENCHE OS CAMPOS
+                    // 7. PREENCHE OS CAMPOS
                     // =============================================================
                     // VLAN
                     const inputVlan = document.getElementById('AuthenticationContractVlan');
@@ -999,7 +1058,7 @@
                         tipoEquipamento: tipoEquip,
                         portaWeb: portaWebCorreta,
                         aplicado: true
-                    }, contratoAtual);
+                    }, dados.contrato || contratoAtual);
 
                 } catch (err) {
                     console.error('Erro ao aplicar complemento:', err);
@@ -1026,12 +1085,12 @@
             let btnChamado = null;
             let btnConexao = null;
             const todosBotoes = document.querySelectorAll('button, input[type="button"], a, .btn, [role="button"]');
-
+            
             for (let btn of todosBotoes) {
                 const texto = btn.textContent?.trim() || '';
                 const id = btn.id || '';
                 const href = btn.href || '';
-
+                
                 if (texto === "Chamado" || id === "linkChamado" || href.includes('new_solicitations')) {
                     btnChamado = btn;
                     break;
@@ -1077,36 +1136,37 @@
             btnCopiar.addEventListener('click', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
-
+                
                 try {
                     const dados = capturarDadosDoFormulario();
-
+                    
                     if (dados.serial === "XX") {
                         const divTopo = document.body;
                         const matchContrato = divTopo.innerText.match(/Cliente\s*-\s*(\d+)/i);
                         if (matchContrato && matchContrato[1]) {
                             dados.contrato = matchContrato[1].trim();
+                            console.log(`✅ Contrato capturado da página: ${dados.contrato}`);
                         }
                         dados.ssid = document.getElementById('ssid')?.value?.trim() || "XX";
                         dados.senha = document.getElementById('senhaSSID')?.value?.trim() || "XX";
-
+                        
                         const inputOlt = document.getElementById('olt');
                         if (inputOlt && inputOlt.value) dados.olt = inputOlt.value.trim();
-
+                        
                         const inputSlotOLT = document.getElementById('slotOLT');
                         if (inputSlotOLT && inputSlotOLT.value && inputSlotOLT.value.trim() !== '') {
                             dados.slot = parseInt(inputSlotOLT.value, 10).toString();
                         } else {
                             dados.slot = "XX";
                         }
-
+                        
                         const inputPortaOLT = document.getElementById('portaOLT');
                         if (inputPortaOLT && inputPortaOLT.value && inputPortaOLT.value.trim() !== '') {
                             dados.porta = parseInt(inputPortaOLT.value, 10).toString();
                         } else {
                             dados.porta = "XX";
                         }
-
+                        
                         const inputIdOnuOlt = document.getElementById('idOnuOlt');
                         if (inputIdOnuOlt && inputIdOnuOlt.value !== undefined && inputIdOnuOlt.value !== null && inputIdOnuOlt.value !== '') {
                             const idValue = parseInt(inputIdOnuOlt.value, 10);
@@ -1116,12 +1176,18 @@
                         } else {
                             dados.id = "XX";
                         }
-
+                        
                         const todosInputs = document.querySelectorAll('input');
                         for (let inp of todosInputs) {
                             const id = (inp.id || "").toLowerCase();
                             if (id.includes('serial') && inp.value) {
                                 dados.serial = inp.value.trim().toUpperCase();
+                            }
+                            if (id.includes('tipo') && inp.value) {
+                                const val = inp.value.toLowerCase().trim();
+                                if (val === 'b' || val === 'r') {
+                                    dados.tipoProvisionamento = val;
+                                }
                             }
                         }
                     }
@@ -1136,7 +1202,8 @@
                         ? `${dados.telefonia.numero}||${dados.telefonia.senha}||${dados.telefonia.ip || ''}`
                         : '||||';
 
-                    const stringSecreta = `OSIRDATA||${dados.serial}||${dados.ssid}||${dados.senha}||${dados.slot}||${dados.porta}||${dados.id}||${dados.contrato}||${dados.vlan}||${dados.pontoAcesso}||${dados.olt}||${dados.tipoProvisionamento}||${telefoniaStr}||${dados.portaWeb}`;
+                    const contratoParaClipboard = dados.contrato || "Nenhum";
+                    const stringSecreta = `OSIRDATA||${dados.serial}||${dados.ssid}||${dados.senha}||${dados.slot}||${dados.porta}||${dados.id}||${contratoParaClipboard}||${dados.vlan}||${dados.pontoAcesso}||${dados.olt}||${dados.tipoProvisionamento}||${telefoniaStr}||${dados.portaWeb}`;
 
                     navigator.clipboard.writeText(stringSecreta).then(() => {
                         const statusTelefonia = dados.telefonia.temTelefonia ? '📞' : '';
@@ -1159,8 +1226,8 @@
                             font-family: 'Segoe UI', Arial, sans-serif;
                         `;
                         notificacao.innerHTML = `
-                            <div style="font-weight: bold; margin-bottom: 3px;">✅ Complemento gerado!</div>
-                            <div style="font-size: 10px; opacity: 0.8; word-break: break-all;">${complementoTexto.substring(0, 80)}${complementoTexto.length > 80 ? '...' : ''}</div>
+                            <div style="font-weight: bold; margin-bottom: 3px;">✅ Dados capturados!</div>
+                            <div style="font-size: 10px; opacity: 0.8;">Contrato: ${contratoParaClipboard}</div>
                         `;
                         document.body.appendChild(notificacao);
 
@@ -1187,7 +1254,7 @@
     // =========================================================================
     // PARTE 2: INSERÇÃO NO ERP (BOTÃO COMPLEMENTAR)
     // =========================================================================
-    if (window.location.href.includes(URL_CONTRATO_VOALLE) ||
+    if (window.location.href.includes(URL_CONTRATO_VOALLE) || 
         window.location.href.includes(URL_OPERACAO)) {
 
         const contratoAtual = extrairContratoDaURL();
