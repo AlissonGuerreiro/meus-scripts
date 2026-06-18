@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Osir - Assistente de Chamado
 // @namespace    http://tampermonkey.net/
-// @version      1.0.8
-// @description  Alertas automáticos de planos e auditor de estoque - CORRIGIDO
+// @version      1.1.0
+// @description  Alertas automáticos de planos e auditor de estoque - COM PARCELAMENTO 2x E NOVOS ÍCONES
 // @author       Alisson Guerreiro
 // @match        https://erp.osirnet.com.br/*
 // @grant        none
@@ -13,7 +13,7 @@
     'use strict';
 
     // =========================================================================
-    // BANCO DE DADOS (MATERIAIS E FERRAMENTAS) - MANTIDO
+    // BANCO DE DADOS (MATERIAIS E FERRAMENTAS)
     // =========================================================================
     const MATERIAIS_PERMITIDOS = [
         "CONECTOR FAST SC/APC", "FIXA FIO PRETO UNIDADE", "SUPORTE ORGANIZADOR DE ROTEADOR",
@@ -24,7 +24,7 @@
         "PARAFUSO SX SOBERBA 1/4", "PARAFUSO PHILIPS 4MM (INOVAÇÃO)", "PROTETOR CONECTOR OPTICO",
         "FITA ISOLANTE PRETA 20M X 19 MM", "BUCHA DE PAREDE 8MM", "PARAFUSO PHILIPS 4,0 X 40",
         "CABO LAN BRANCO", "ALINHADOR OPTICO APC SIMPLEX", "PROTETOR DE EMENDA", "SUPA 3",
-        "FITA DE ACO INOX 430 LAMINADO A FRIO LISA 3/4 - 05 MM X 25MTS", "PF CHIP RT CB CH PH BC 3,5X25MM", "BUCHA FIXACAO 6MM"
+        "FITA DE ACO INOX 430 LAMINADO A FRIO LISA 3/4 - 05 MM X 25MTS", "PF CHIP RT CB CH PH BC 3,5X25MM", "BUCHA FIXACAO 6MM", "PARAFUSO 10 x 55 mm", "ARAME DE ESPINAR ISOLADO METALICO FEI125V 105M"
     ];
 
     const FERRAMENTAS_PROIBIDAS = [
@@ -71,6 +71,9 @@
     auditorContainer.style.cssText = "position: fixed; top: 80px; right: 25px; width: 360px; z-index: 10001; font-family: 'Roboto', sans-serif, Arial; display: flex; flex-direction: column; gap: 10px; pointer-events: none;";
     document.body.appendChild(auditorContainer);
 
+    // =========================================================================
+    // FUNÇÕES DE CRIAÇÃO DE CARDS (COM ÍCONES CORRETOS)
+    // =========================================================================
     function criarCardAlerta(texto, corFundo, corTexto, corBorda) {
         const card = document.createElement('div');
         card.style.cssText = `background-color: ${corFundo}; color: ${corTexto}; border: 2px solid ${corBorda}; border-radius: 8px; padding: 12px 15px; font-size: 12px; font-weight: bold; line-height: 1.4; box-shadow: 0px 4px 12px rgba(0,0,0,0.15); text-align: center; text-transform: uppercase; pointer-events: auto;`;
@@ -98,7 +101,7 @@
     }
 
     // =========================================================================
-    // MÓDULO 1: NOTIFICADOR DE PLANOS (CORRIGIDO)
+    // MÓDULO 1: NOTIFICADOR DE PLANOS (COM ÍCONES CORRETOS)
     // =========================================================================
     let ultimaCategoria = null; let ultimoTextoOS = "";
 
@@ -111,17 +114,16 @@
             let divDemandaCompleta = null;
             const todasAsDivs = document.querySelectorAll('div');
 
-            // ✅ BUSCA MAIS ESPECÍFICA
             for (let div of todasAsDivs) {
                 if (div.innerText) {
                     let txt = normalizarTexto(div.innerText);
-                    // Procura por seções específicas
                     if (txt.includes("---- servicos ----") ||
                         txt.includes("---- servicos a serem ativados ----") ||
                         txt.includes("planos") ||
                         txt.includes("troca de endereco") ||
                         txt.includes("custo r 80 00") ||
-                        txt.includes("portabilidade")) {
+                        txt.includes("portabilidade") ||
+                        txt.includes("parcelamento")) {
                         if (!div.classList.contains('ql-editor') && !div.classList.contains('dx-htmleditor-content')) {
                             divDemandaCompleta = div;
                             break;
@@ -153,6 +155,14 @@
             }
 
             // =============================================================
+            // PARCELAMENTO 2x
+            // =============================================================
+            const temParcelamento2x = /parcelamento\s*2x|parcelado\s*2x|2x\s*parcelado|2\s*x\s*parcelamento/i.test(txtNorm);
+            if (temParcelamento2x) {
+                alertContainer.appendChild(criarCardAlerta("💳 PARCELAMENTO 2x: VERIFICAR COM O CLIENTE!", "#fff3e0", "#e65100", "#ff9800"));
+            }
+
+            // =============================================================
             // EXTRAI TUDO A PARTIR DE "---- Planos ----" ou usa texto completo
             // =============================================================
             let textoParaAnalise = "";
@@ -160,7 +170,6 @@
             if (matchPlanos && matchPlanos[1]) {
                 textoParaAnalise = matchPlanos[1].trim();
             } else {
-                // ✅ SE NÃO ENCONTRAR PLANOS, PROCURA POR SEÇÕES DE SERVIÇOS
                 const matchServicos = textoOSOriginal.match(/----\s*Serviços\s*----\s*([\s\S]*?)$/i);
                 if (matchServicos && matchServicos[1]) {
                     textoParaAnalise = matchServicos[1].trim();
@@ -179,7 +188,6 @@
             // =============================================================
             const textoOriginalParaAnalise = textoParaAnalise;
 
-            // ✅ FLAGS PARA EVITAR DUPLICATAS
             let alertaAdicionado = {
                 osirFone: false,
                 osirMovel: false,
@@ -187,28 +195,28 @@
                 portabilidade: false
             };
 
-            // ✅ SÓ DETECTA OSIRFONE
+            // ✅ OsirFone - 📞
             const temOsirFone = /OsirFone|osirfone|Osir Fone|osir fone/i.test(textoOriginalParaAnalise);
             if (temOsirFone && !alertaAdicionado.osirFone) {
-                alertContainer.appendChild(criarCardAlerta("☎️ TELEFONIA FIXA: VERIFICAR SE FOI INSTALADA!", "#e3f2fd", "#0d47a1", "#1976d2"));
+                alertContainer.appendChild(criarCardAlerta("📞 TELEFONIA FIXA: VERIFICAR SE FOI INSTALADA!", "#e3f2fd", "#0d47a1", "#1976d2"));
                 alertaAdicionado.osirFone = true;
             }
 
-            // Verifica se contém OsirMóvel
+            // ✅ OsirMóvel - 📱
             const temOsirMovel = /OsirMóvel|osirmovel|Osir Movel|osir movel|OSIRMÓVEL/i.test(textoOriginalParaAnalise);
             if (temOsirMovel && !alertaAdicionado.osirMovel) {
                 alertContainer.appendChild(criarCardAlerta("📱 OSIRMÓVEL: VERIFICAR SE O CHIP FOI ENTREGUE!", "#fff3e0", "#e65100", "#ff9800"));
                 alertaAdicionado.osirMovel = true;
             }
 
-            // Verifica se contém WiFi Pro
+            // ✅ WiFi Pro - 🌐
             const temWifiPro = /WiFi\s*Pro|Wi-Fi\s*Pro|WifiPro|wifipro|WiFi\s*PRO|WI-FI\s*PRO|wifi\s+profissional|wi-fi\s+profissional/i.test(textoOriginalParaAnalise);
             if (temWifiPro && !alertaAdicionado.wifiPro) {
                 alertContainer.appendChild(criarCardAlerta("🌐 WIFI-PRO: VERIFICAR SE FOI INSTALADO!", "#f3e5f5", "#4a148c", "#9c27b0"));
                 alertaAdicionado.wifiPro = true;
             }
 
-            // Verifica se contém Portabilidade
+            // ✅ Portabilidade - 💚 (coração verde)
             const temPortabilidade = /Portabilidade|portabilidade|PORTABILIDADE/i.test(textoOriginalParaAnalise);
             if (temPortabilidade && !alertaAdicionado.portabilidade) {
                 alertContainer.appendChild(criarCardAlerta("💚 PORTABILIDADE ATIVA: VERIFICAR A PORTABILIDADE!", "#e8f5e9", "#1b5e20", "#4caf50"));
