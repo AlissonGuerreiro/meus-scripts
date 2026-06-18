@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Osir - Assistente de Provisionamento
 // @namespace    http://tampermonkey.net/
-// @version      2.5.0
-// @description  Janela SÓ com dados do Amarelo, Splitter do Contrato, Ordem Definida + WiFi Pro + Lembrete de Salvar (PERSISTENTE)
+// @version      2.6.0
+// @description  Janela SÓ com dados do Amarelo, Splitter do Contrato, Ordem Definida + WiFi Pro + Lembrete de Salvar (PERSISTENTE) + Botão Complementar Manual
 // @author       Alisson Guerreiro
 // @match        *://*.osirnet.com.br/*
 // @match        *://*.osir.net.br/*
@@ -67,16 +67,14 @@
     let lembreteIntervalo = null;
 
     function verificarSeSalvou() {
-        // Verifica se o botão de salvar existe e está desabilitado ou com classe success
         const btnSalvar = document.getElementById('save-and-coord');
         if (!btnSalvar) return false;
         if (btnSalvar.disabled) return true;
         if (btnSalvar.classList.contains('success')) return true;
-
-        // Verifica se há mensagem de sucesso
+        
         const msgSucesso = document.querySelector('.alert-success, .success-message, .growl-success');
         if (msgSucesso && msgSucesso.textContent.includes('sucesso')) return true;
-
+        
         return false;
     }
 
@@ -98,11 +96,9 @@
     }
 
     function mostrarLembreteSalvar() {
-        // Se já tem lembrete ou já salvou, não faz nada
         if (elementoLembrete) return;
         if (verificarSeSalvou()) return;
 
-        // Verifica se está na página do contrato (tem campos de autenticação)
         const temCamposContrato = document.getElementById('AuthenticationContractEquipmentSerialNumber') !== null;
         if (!temCamposContrato) {
             return;
@@ -164,7 +160,6 @@
             fecharLembrete();
         });
 
-        // Adiciona os estilos se não existirem
         if (!document.getElementById('osir-lembrete-style')) {
             const style = document.createElement('style');
             style.id = 'osir-lembrete-style';
@@ -184,7 +179,6 @@
             document.head.appendChild(style);
         }
 
-        // Verifica periodicamente se salvou
         if (lembreteIntervalo) {
             clearInterval(lembreteIntervalo);
         }
@@ -196,22 +190,17 @@
         }, 2000);
     }
 
-    // Função que monitora mudanças na página e recria o lembrete se necessário
     function monitorarPaginaParaLembrete() {
-        // Verifica se está na página do contrato
         const temCamposContrato = document.getElementById('AuthenticationContractEquipmentSerialNumber') !== null;
-
+        
         if (temCamposContrato) {
-            // Se está na página do contrato e não salvou, mostra o lembrete
             if (!verificarSeSalvou() && !elementoLembrete) {
                 mostrarLembreteSalvar();
             }
-            // Se salvou, fecha o lembrete
             if (verificarSeSalvou() && elementoLembrete) {
                 fecharLembrete();
             }
         } else {
-            // Se não está na página do contrato, remove o lembrete
             if (elementoLembrete) {
                 fecharLembrete();
             }
@@ -219,7 +208,7 @@
     }
 
     // =========================================================================
-    // FUNÇÕES DA JANELA (MANTIDAS IGUAIS)
+    // FUNÇÕES DA JANELA
     // =========================================================================
     function redimensionarJanela(deltaLargura, deltaAltura, deltaFonte) {
         const janela = document.getElementById('osir-floating-window');
@@ -343,7 +332,7 @@
     }
 
     // =========================================================================
-    // CAPTURAR DADOS DO PROVISIONAMENTO
+    // CAPTURAR DADOS DO PROVISIONAMENTO (AMARELO)
     // =========================================================================
     function capturarDadosDoProvisionamento() {
         console.log('🟡 CAPTURANDO DADOS DO PROVISIONAMENTO...');
@@ -970,7 +959,7 @@
 
         conteudo.appendChild(btnSincronizar);
 
-        // BOTÃO GERAR COMPLEMENTO
+        // BOTÃO GERAR COMPLEMENTO (na janela)
         const btnGerarComplemento = document.createElement('button');
         btnGerarComplemento.textContent = '📝 Gerar Complemento';
         btnGerarComplemento.style.cssText = `
@@ -1054,6 +1043,236 @@
         }
 
         criarJanelaFlutuante(dadosAmarelo);
+    }
+
+    // =========================================================================
+    // FUNÇÃO PARA BUSCAR CAMPO COMPLEMENTAR
+    // =========================================================================
+    function buscarCampoComplementar() {
+        let el = document.getElementById('AuthenticationContractComplement');
+        if (el) return el;
+        el = document.querySelector('input[name="data[AuthenticationContract][complement]"]');
+        if (el) return el;
+        const selectors = [
+            'input[id*="Complement"]',
+            'input[name*="complement"]',
+            'textarea[id*="Complement"]',
+            'textarea[name*="complement"]'
+        ];
+        for (let selector of selectors) {
+            el = document.querySelector(selector);
+            if (el) return el;
+        }
+        const frames = document.querySelectorAll('iframe');
+        for (let frame of frames) {
+            try {
+                const doc = frame.contentDocument || frame.contentWindow.document;
+                el = doc.getElementById('AuthenticationContractComplement');
+                if (el) return el;
+                el = doc.querySelector('input[name="data[AuthenticationContract][complement]"]');
+                if (el) return el;
+            } catch (e) {}
+        }
+        return null;
+    }
+
+    // =========================================================================
+    // BOTÃO "COMPLEMENTAR (MANUAL)" - RESTAURADO E MELHORADO!
+    // =========================================================================
+    function injetarBotaoComplementarManual() {
+        try {
+            if (document.getElementById('btn-osir-complementar-manual')) {
+                return;
+            }
+
+            const inputComplementar = buscarCampoComplementar();
+            if (!inputComplementar) {
+                console.log('⚠️ Campo complementar não encontrado. Tentando novamente...');
+                return;
+            }
+
+            const pai = inputComplementar.parentNode;
+            if (!pai) {
+                console.log('⚠️ Pai do campo complementar não encontrado.');
+                return;
+            }
+
+            let container = pai;
+            if (pai.classList && pai.classList.contains('controls')) {
+                container = pai;
+            } else {
+                container = document.createElement('div');
+                container.style.cssText = 'display: flex; align-items: center; gap: 8px; flex-wrap: wrap;';
+                pai.insertBefore(container, inputComplementar);
+                container.appendChild(inputComplementar);
+            }
+
+            const botao = document.createElement('button');
+            botao.id = 'btn-osir-complementar-manual';
+            botao.type = 'button';
+            botao.textContent = '📝 Complementar (Manual)';
+            botao.title = 'Atualiza Serial, Slot, Porta, ID, VLAN e mantém SSID/Senha';
+            botao.style.cssText = `
+                padding: 5px 14px;
+                background-color: #e11d48;
+                color: #ffffff;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+                font-weight: bold;
+                font-size: 12px;
+                white-space: nowrap;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+                transition: background 0.2s;
+                flex-shrink: 0;
+            `;
+            botao.onmouseover = () => botao.style.backgroundColor = '#be123c';
+            botao.onmouseout = () => botao.style.backgroundColor = '#e11d48';
+
+            botao.addEventListener('click', async function() {
+                try {
+                    console.log('📝 Botão "Complementar (Manual)" clicado!');
+
+                    // 1. CAPTURA DADOS DO FORMULÁRIO
+                    const serial = document.getElementById('AuthenticationContractEquipmentSerialNumber')?.value?.trim() || "XX";
+                    const slot = document.getElementById('AuthenticationContractSlotOlt')?.value?.trim() || "XX";
+                    const porta = document.getElementById('AuthenticationContractPortOlt')?.value?.trim() || "XX";
+                    const id = document.getElementById('AuthenticationContractOltId')?.value?.trim() || "XX";
+                    const ssidAtual = document.getElementById('AuthenticationContractWifiName')?.value?.trim() || "";
+                    const senhaAtual = document.getElementById('AuthenticationContractWifiPassword')?.value?.trim() || "";
+                    const tipoProv = document.getElementById('tipoProvisionamento')?.value?.trim()?.toLowerCase() || "";
+                    const splitter = document.getElementById('AuthenticationSplitterPortTitle')?.value?.trim() || "";
+                    const portaSplitter = document.getElementById('AuthenticationSplitterPortPort')?.value?.trim() || "";
+                    
+                    // Ponto de Acesso
+                    let pontoAcesso = document.getElementById('AuthenticationAccessPointTitle')?.value?.trim() || "";
+                    
+                    // Telefonia
+                    const numTel = document.getElementById('numeroTelefone01')?.value?.trim() || "";
+                    const senhaTel = document.getElementById('senhaTelefone')?.value?.trim() || "";
+                    const ipTel = document.getElementById('ipGerencia')?.value?.trim() || "";
+
+                    // 2. CALCULA VLAN
+                    const vlanCalculada = calcularVlanOsir(pontoAcesso, slot, porta);
+
+                    // 3. MONTA OBJETO DADOS
+                    const dados = {
+                        serial: serial,
+                        ssid: ssidAtual || "XX",
+                        senha: senhaAtual || "XX",
+                        slot: slot,
+                        porta: porta,
+                        id: id,
+                        contrato: document.getElementById('AuthenticationContractContractId')?.value?.trim() || "",
+                        vlan: vlanCalculada,
+                        pontoAcesso: pontoAcesso,
+                        olt: pontoAcesso,
+                        tipoProvisionamento: tipoProv,
+                        portaWeb: tipoProv === 'b' ? '8092' : '80',
+                        splitter: splitter || "XX",
+                        portaSplitter: portaSplitter || "XX",
+                        wifiPro: wifiProAtivo,
+                        telefonia: {
+                            temTelefonia: numTel !== "",
+                            numero: numTel,
+                            senha: senhaTel,
+                            ip: ipTel
+                        }
+                    };
+
+                    console.log('📊 Dados capturados do formulário:', dados);
+
+                    // 4. PREENCHE OS CAMPOS
+                    // Serial
+                    const elSerial = document.getElementById('AuthenticationContractEquipmentSerialNumber');
+                    if (elSerial && serial !== "XX") {
+                        elSerial.value = serial;
+                        elSerial.dispatchEvent(new Event('input', { bubbles: true }));
+                        elSerial.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+
+                    // Slot OLT
+                    const elSlot = document.getElementById('AuthenticationContractSlotOlt');
+                    if (elSlot && slot !== "XX") {
+                        elSlot.value = slot;
+                        elSlot.dispatchEvent(new Event('input', { bubbles: true }));
+                        elSlot.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+
+                    // Porta OLT
+                    const elPorta = document.getElementById('AuthenticationContractPortOlt');
+                    if (elPorta && porta !== "XX") {
+                        elPorta.value = porta;
+                        elPorta.dispatchEvent(new Event('input', { bubbles: true }));
+                        elPorta.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+
+                    // ID ONU
+                    const elId = document.getElementById('AuthenticationContractOltId');
+                    if (elId && id !== "XX") {
+                        elId.value = id;
+                        elId.dispatchEvent(new Event('input', { bubbles: true }));
+                        elId.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+
+                    // VLAN (calculada)
+                    const elVlan = document.getElementById('AuthenticationContractVlan');
+                    if (elVlan && vlanCalculada !== "XX") {
+                        elVlan.value = vlanCalculada;
+                        elVlan.dispatchEvent(new Event('input', { bubbles: true }));
+                        elVlan.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+
+                    // SSID (se estiver vazio, preenche com o capturado)
+                    const elSsid = document.getElementById('AuthenticationContractWifiName');
+                    if (elSsid && ssidAtual === "" && dados.ssid !== "XX") {
+                        elSsid.value = dados.ssid;
+                        elSsid.dispatchEvent(new Event('input', { bubbles: true }));
+                        elSsid.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+
+                    // Senha WiFi (se estiver vazia, preenche com a capturada)
+                    const elSenha = document.getElementById('AuthenticationContractWifiPassword');
+                    if (elSenha && senhaAtual === "" && dados.senha !== "XX") {
+                        elSenha.value = dados.senha;
+                        elSenha.dispatchEvent(new Event('input', { bubbles: true }));
+                        elSenha.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+
+                    // 5. GERA E PREENCHE O COMPLEMENTO
+                    const complemento = montarComplemento(dados);
+                    
+                    inputComplementar.value = complemento;
+                    inputComplementar.dispatchEvent(new Event('input', { bubbles: true }));
+                    inputComplementar.dispatchEvent(new Event('change', { bubbles: true }));
+
+                    // 6. FEEDBACK VISUAL
+                    botao.textContent = '✅ Atualizado!';
+                    botao.style.backgroundColor = '#22c55e';
+                    setTimeout(() => {
+                        botao.textContent = '📝 Complementar (Manual)';
+                        botao.style.backgroundColor = '#e11d48';
+                    }, 2000);
+
+                    // 7. LEMBRETE DE SALVAR
+                    if (!verificarSeSalvou()) {
+                        setTimeout(mostrarLembreteSalvar, 500);
+                    }
+
+                    console.log('✅ Complemento gerado e campos atualizados!');
+
+                } catch (err) {
+                    console.error('❌ Erro ao executar Complementar (Manual):', err);
+                    alert('❌ Erro ao executar: ' + err.message);
+                }
+            });
+
+            container.appendChild(botao);
+            console.log('✅ Botão "Complementar (Manual)" adicionado!');
+
+        } catch (err) {
+            console.error('Erro ao injetar botão complementar:', err);
+        }
     }
 
     // =========================================================================
@@ -1188,6 +1407,18 @@
     if (window.location.href.includes(URL_CONTRATO_VOALLE) ||
         window.location.href.includes(URL_OPERACAO)) {
 
+        // Injeta o botão "Complementar (Manual)"
+        let tentativas = 0;
+        const maxTentativas = 10;
+        const intervaloInjecao = setInterval(() => {
+            tentativas++;
+            injetarBotaoComplementarManual();
+            if (document.getElementById('btn-osir-complementar-manual') || tentativas >= maxTentativas) {
+                clearInterval(intervaloInjecao);
+                console.log(`✅ Botão "Complementar (Manual)" injetado após ${tentativas} tentativas`);
+            }
+        }, 1500);
+
         // Mostra o lembrete inicial
         setTimeout(mostrarLembreteSalvar, 3000);
 
@@ -1199,7 +1430,9 @@
         setTimeout(verificarDadosEMostrarJanela, 4000);
     }
 
-    console.log('🚀 Osir Assistente v2.5.0 carregado!');
+    console.log('🚀 Osir Assistente v2.6.0 carregado!');
+    console.log('📝 Botão "Complementar (Manual)" RESTAURADO!');
     console.log('💾 Lembrete de salvar PERSISTENTE - não some ao recarregar AJAX');
     console.log('📍 Lembrete posicionado no TOPO da tela');
+    console.log('🔄 Botão manual: Atualiza Serial, Slot, Porta, ID, VLAN | Mantém SSID/Senha');
 })();
