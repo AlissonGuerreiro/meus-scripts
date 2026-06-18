@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Osir - Assistente de Chamado
 // @namespace    http://tampermonkey.net/
-// @version      1.1.0
-// @description  Alertas automáticos de planos e auditor de estoque - COM PARCELAMENTO 2x E NOVOS ÍCONES
+// @version      1.2.0
+// @description  Alertas automáticos de planos, portabilidade, e auditor de estoque
 // @author       Alisson Guerreiro
 // @match        https://erp.osirnet.com.br/*
 // @grant        none
@@ -11,6 +11,12 @@
 
 (function() {
     'use strict';
+
+    // =========================================================================
+    // VERSÃO E CONTROLE
+    // =========================================================================
+    const SCRIPT_VERSION = '1.2.0';
+    console.log(`🚀 Osir Assistente de Chamado v${SCRIPT_VERSION} carregado!`);
 
     // =========================================================================
     // BANCO DE DADOS (MATERIAIS E FERRAMENTAS)
@@ -24,29 +30,33 @@
         "PARAFUSO SX SOBERBA 1/4", "PARAFUSO PHILIPS 4MM (INOVAÇÃO)", "PROTETOR CONECTOR OPTICO",
         "FITA ISOLANTE PRETA 20M X 19 MM", "BUCHA DE PAREDE 8MM", "PARAFUSO PHILIPS 4,0 X 40",
         "CABO LAN BRANCO", "ALINHADOR OPTICO APC SIMPLEX", "PROTETOR DE EMENDA", "SUPA 3",
-        "FITA DE ACO INOX 430 LAMINADO A FRIO LISA 3/4 - 05 MM X 25MTS", "PF CHIP RT CB CH PH BC 3,5X25MM", "BUCHA FIXACAO 6MM", "PARAFUSO 10 x 55 mm", "ARAME DE ESPINAR ISOLADO METALICO FEI125V 105M"
+        "FITA DE ACO INOX 430 LAMINADO A FRIO LISA 3/4 - 05 MM X 25MTS", "PF CHIP RT CB CH PH BC 3,5X25MM",
+        "BUCHA FIXACAO 6MM", "PARAFUSO 10 x 55 mm", "ARAME DE ESPINAR ISOLADO METALICO FEI125V 105M"
     ];
 
     const FERRAMENTAS_PROIBIDAS = [
         "ALICATE DE CORTE DIAGONAL ISOLADO", "ALICATE DE CRIMPAR", "ALICATE DECAPADOR DE CABO DROP FLAT CABLE STRIPPER VERDE",
-        "ALICATE DECAPADOR DE FIBRA OPTICA 3 FUROS AMARELO CFS-3 (DESCASCADOR ACRILATO)", "ALICATE UNIVERSAL",
-        "BADISCO DIGITAL C/ IDENTIFICADOR DE CHAMADAS", "PILHA AAA RECARREGÁVEL", "BOLSA PARA FERRAMENTAS 12\" STANDARD 2 BOLSOS - IRWIN",
+        "ALICATE DECAPADOR DE FIBRA OPTICA 3 FUROS AMARELO CFS-3", "ALICATE UNIVERSAL",
+        "BADISCO DIGITAL C/ IDENTIFICADOR DE CHAMADAS", "PILHA AAA RECARREGÁVEL", "BOLSA PARA FERRAMENTAS 12\" STANDARD",
         "BOLSA PARA KIT FIBRA", "BALDE EM LONA COM FUNDO EM COURO REFORÇADO", "BROCA 10MM MADEIRA ENG. RAP.",
-        "BROCA WIDEA DE AÇO RAPIDO SDS PLUS 6MM X 160MM ENG. RAP.", "BROCA WIDEA DE AÇO RAPIDO SDS PLUS 10MM X 160MM ENG. RAP.",
-        "BROCA WIDEA DE AÇO RAPIDO SDS PLUS 8MM X 160MM ENG. RAP.", "BROCA WIDEA DE AÇO RAPIDO SDS PLUS 10MM X 400MM ENG. RAP.",
-        "GUIA PASSA FIO PROFISSIONAL ALMA DE AÇO - 20 METROS - KALOP", "CANETA LASER TESTADORA DE FIBRA",
-        "CORDÃO ÓPTICO SC/APC -SC/APC 1,5MTS OU 3 MTS", "CARREGADOR DE PILHAS AA/AAA + 4 PILHAS AA 2500MAH",
-        "CAVALETE PARA BOBINA DE CABO DROP", "PROLONGADOR PARA ROLO EXTENSOR 5MT - VARA DE MANOBRA",
-        "CHAVE DE FENDA 3/16\"X 5\" AÇO CROMO 4,7\" X 127", "CHAVE FENDA 1/4 X 4\" AÇO CROMO 6,3\" X100",
-        "CHAVE PHILIPS 1/4 X 8\" 6\" X 200", "CHAVE PHILIPS 3/16 X 4\" 4,5\" X 100", "CONE SINALIZADOR 50CM BRANCO E LARANJA - PLASTICO",
+        "BROCA WIDEA DE AÇO RAPIDO SDS PLUS", "GUIA PASSA FIO PROFISSIONAL ALMA DE AÇO - 20 METROS",
+        "CANETA LASER TESTADORA DE FIBRA", "CORDÃO ÓPTICO SC/APC -SC/APC 1,5MTS OU 3 MTS",
+        "CARREGADOR DE PILHAS AA/AAA + 4 PILHAS AA 2500MAH", "CAVALETE PARA BOBINA DE CABO DROP",
+        "PROLONGADOR PARA ROLO EXTENSOR 5MT - VARA DE MANOBRA", "CHAVE DE FENDA 3/16\"X 5\" AÇO CROMO",
+        "CHAVE FENDA 1/4 X 4\" AÇO CROMO 6,3\" X100", "CHAVE PHILIPS 1/4 X 8\" 6\" X 200",
+        "CHAVE PHILIPS 3/16 X 4\" 4,5\" X 100", "CONE SINALIZADOR 50CM BRANCO E LARANJA - PLASTICO",
         "ESCADA TELESCOPIA AÇO 4,10MT 8055 ZEUS", "ESCADA EXTENSIVA DE FIBRA VAZADA 3,50/6,00 MT- 19 DEGRAUS",
-        "ESTILETE 18MM", "EXTENSÃO ELÉTRICA 20M 10A 2X2,5MM", "FUSIMEC", "MALETA PLÁSTICA ORGANIZADORA 431X333X88MM - STANLEY",
-        "MARTELO UNHA 23MM - CABO EM FIBRA", "NIVEL DE MADEIRA 14\"", "PILHA AA RECARREGAVEL", "RECIPIENTE P/ ÁLCOOL ISOPROPÍLICO 200ML",
-        "CHAVE COMBINADA C/ CATRACA 10MM", "CHAVE COMBINADA C/ CATRACA 13MM", "CORDA ELASTICA 1,5M", "MARTELETE 820W 220V GBH 2-24 BOSCH",
-        "TESTADOR DE REDE RJ 45 E RJ 11", "BATERIA 9V ALCALINA", "CANETA P/ RETROPROJETOR PRETA", "CADEADO ANTIFURTO COM CHAVE 1,2 MT",
-        "CLIVADOR REDEX", "CAIXA ORGANIZADORA", "GARRAFA TERMICA 5L"
+        "ESTILETE 18MM", "EXTENSÃO ELÉTRICA 20M 10A 2X2,5MM", "FUSIMEC", "MALETA PLÁSTICA ORGANIZADORA",
+        "MARTELO UNHA 23MM - CABO EM FIBRA", "NIVEL DE MADEIRA 14\"", "PILHA AA RECARREGAVEL",
+        "RECIPIENTE P/ ÁLCOOL ISOPROPÍLICO 200ML", "CHAVE COMBINADA C/ CATRACA 10MM",
+        "CHAVE COMBINADA C/ CATRACA 13MM", "CORDA ELASTICA 1,5M", "MARTELETE 820W 220V GBH 2-24 BOSCH",
+        "TESTADOR DE REDE RJ 45 E RJ 11", "BATERIA 9V ALCALINA", "CANETA P/ RETROPROJETOR PRETA",
+        "CADEADO ANTIFURTO COM CHAVE 1,2 MT", "CLIVADOR REDEX", "CAIXA ORGANIZADORA", "GARRAFA TERMICA 5L"
     ];
 
+    // =========================================================================
+    // FUNÇÕES AUXILIARES
+    // =========================================================================
     function normalizarItem(texto) {
         if (!texto) return "";
         return texto.trim().replace(/^\d+\s*-\s*/, "")
@@ -57,6 +67,11 @@
     const listaPermitidaNormalizada = MATERIAIS_PERMITIDOS.map(normalizarItem);
     const listaFerramentasNormalizada = FERRAMENTAS_PROIBIDAS.map(normalizarItem);
     const CABO_DROP_NORMALIZADO = normalizarItem("CABO ÓPTICO (DROP)");
+
+    function normalizarTexto(texto) {
+        if (!texto) return "";
+        return texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[-_.,;:()|]/g, " ").replace(/\s+/g, " ").toLowerCase().trim();
+    }
 
     // =========================================================================
     // CONTAINERS DE ALERTAS
@@ -72,12 +87,12 @@
     document.body.appendChild(auditorContainer);
 
     // =========================================================================
-    // FUNÇÕES DE CRIAÇÃO DE CARDS (COM ÍCONES CORRETOS)
+    // FUNÇÕES DE CRIAÇÃO DE CARDS
     // =========================================================================
-    function criarCardAlerta(texto, corFundo, corTexto, corBorda) {
+    function criarCardAlerta(texto, corFundo, corTexto, corBorda, icone = "") {
         const card = document.createElement('div');
         card.style.cssText = `background-color: ${corFundo}; color: ${corTexto}; border: 2px solid ${corBorda}; border-radius: 8px; padding: 12px 15px; font-size: 12px; font-weight: bold; line-height: 1.4; box-shadow: 0px 4px 12px rgba(0,0,0,0.15); text-align: center; text-transform: uppercase; pointer-events: auto;`;
-        card.innerText = texto;
+        card.innerText = icone + " " + texto;
         return card;
     }
 
@@ -95,20 +110,20 @@
         return card;
     }
 
-    function normalizarTexto(texto) {
-        if (!texto) return "";
-        return texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[-_.,;:()|]/g, " ").replace(/\s+/g, " ").toLowerCase().trim();
-    }
-
     // =========================================================================
-    // MÓDULO 1: NOTIFICADOR DE PLANOS (COM ÍCONES CORRETOS)
+    // MÓDULO 1: NOTIFICADOR DE PLANOS (CORRIGIDO)
     // =========================================================================
-    let ultimaCategoria = null; let ultimoTextoOS = "";
+    let ultimaCategoria = null;
+    let ultimoTextoOS = "";
 
     function processarAlertas() {
         try {
             const inputCategoria = document.getElementById('serviceCategoryId1');
-            if (!inputCategoria) { alertContainer.innerHTML = ""; ultimaCategoria = null; return; }
+            if (!inputCategoria) {
+                alertContainer.innerHTML = "";
+                ultimaCategoria = null;
+                return;
+            }
 
             const categoryAtual = inputCategoria.value ? inputCategoria.value.trim() : "";
             let divDemandaCompleta = null;
@@ -123,7 +138,10 @@
                         txt.includes("troca de endereco") ||
                         txt.includes("custo r 80 00") ||
                         txt.includes("portabilidade") ||
-                        txt.includes("parcelamento")) {
+                        txt.includes("parcelamento") ||
+                        txt.includes("wifi pro") ||
+                        txt.includes("osir fone") ||
+                        txt.includes("osir movel")) {
                         if (!div.classList.contains('ql-editor') && !div.classList.contains('dx-htmleditor-content')) {
                             divDemandaCompleta = div;
                             break;
@@ -131,15 +149,21 @@
                     }
                 }
             }
-            if (!divDemandaCompleta) { alertContainer.innerHTML = ""; return; }
+
+            if (!divDemandaCompleta) {
+                alertContainer.innerHTML = "";
+                return;
+            }
 
             const cloneMemoria = divDemandaCompleta.cloneNode(true);
             cloneMemoria.querySelectorAll('.ql-editor, .dx-htmleditor-content, .ck-content, [contenteditable="true"]').forEach(el => el.remove());
             let textoOSOriginal = cloneMemoria.innerText || "";
 
             if (categoryAtual === ultimaCategoria && textoOSOriginal === ultimoTextoOS) return;
-            ultimaCategoria = categoryAtual; ultimoTextoOS = textoOSOriginal;
+            ultimaCategoria = categoryAtual;
+            ultimoTextoOS = textoOSOriginal;
             alertContainer.innerHTML = "";
+
             if (!textoOSOriginal.trim()) return;
 
             let txtNorm = normalizarTexto(textoOSOriginal).replace(/https?:\/\/\S+/gi, "").replace(/\S+@\S+\.\S+/gi, "");
@@ -149,7 +173,10 @@
             // =============================================================
             if (categoryAtual.toLowerCase().includes("troca") && categoryAtual.toLowerCase().includes("ender")) {
                 if (/custo[\s\S]*?80\s*00[\s\S]*?\([\s]*x[\s]*\)\s*sim/.test(txtNorm)) {
-                    alertContainer.appendChild(criarCardAlerta("⚠️ ENVIAR PARA SAC N2 FAZER A COBRANÇA DE R$ 80,00!", "#ffebee", "#c62828", "#d32f2f"));
+                    alertContainer.appendChild(criarCardAlerta(
+                        "ENVIAR PARA SAC N2 FAZER A COBRANÇA DE R$ 80,00!",
+                        "#ffebee", "#c62828", "#d32f2f", "⚠️"
+                    ));
                 }
                 return;
             }
@@ -159,11 +186,14 @@
             // =============================================================
             const temParcelamento2x = /parcelamento\s*2x|parcelado\s*2x|2x\s*parcelado|2\s*x\s*parcelamento/i.test(txtNorm);
             if (temParcelamento2x) {
-                alertContainer.appendChild(criarCardAlerta("💳 PARCELAMENTO 2x: VERIFICAR COM O CLIENTE!", "#fff3e0", "#e65100", "#ff9800"));
+                alertContainer.appendChild(criarCardAlerta(
+                    "PARCELAMENTO 2x: VERIFICAR COM O CLIENTE!",
+                    "#fff3e0", "#e65100", "#ff9800", "💳"
+                ));
             }
 
             // =============================================================
-            // EXTRAI TUDO A PARTIR DE "---- Planos ----" ou usa texto completo
+            // EXTRAI TEXTO PARA ANÁLISE
             // =============================================================
             let textoParaAnalise = "";
             const matchPlanos = textoOSOriginal.match(/----\s*Planos\s*----\s*([\s\S]*?)$/i);
@@ -183,51 +213,84 @@
                 return;
             }
 
-            // =============================================================
-            // ANALISA O TEXTO COMPLETO (COM FLAGS PARA EVITAR DUPLICATAS)
-            // =============================================================
             const textoOriginalParaAnalise = textoParaAnalise;
 
             let alertaAdicionado = {
                 osirFone: false,
                 osirMovel: false,
                 wifiPro: false,
-                portabilidade: false
+                portabilidade: false,
+                migracao: false,
+                mudancaPlano: false
             };
 
             // ✅ OsirFone - 📞
             const temOsirFone = /OsirFone|osirfone|Osir Fone|osir fone/i.test(textoOriginalParaAnalise);
             if (temOsirFone && !alertaAdicionado.osirFone) {
-                alertContainer.appendChild(criarCardAlerta("📞 TELEFONIA FIXA: VERIFICAR SE FOI INSTALADA!", "#e3f2fd", "#0d47a1", "#1976d2"));
+                alertContainer.appendChild(criarCardAlerta(
+                    "TELEFONIA FIXA: VERIFICAR SE FOI INSTALADA!",
+                    "#e3f2fd", "#0d47a1", "#1976d2", "📞"
+                ));
                 alertaAdicionado.osirFone = true;
             }
 
             // ✅ OsirMóvel - 📱
             const temOsirMovel = /OsirMóvel|osirmovel|Osir Movel|osir movel|OSIRMÓVEL/i.test(textoOriginalParaAnalise);
             if (temOsirMovel && !alertaAdicionado.osirMovel) {
-                alertContainer.appendChild(criarCardAlerta("📱 OSIRMÓVEL: VERIFICAR SE O CHIP FOI ENTREGUE!", "#fff3e0", "#e65100", "#ff9800"));
+                alertContainer.appendChild(criarCardAlerta(
+                    "OSIRMÓVEL: VERIFICAR SE O CHIP FOI ENTREGUE!",
+                    "#fff3e0", "#e65100", "#ff9800", "📱"
+                ));
                 alertaAdicionado.osirMovel = true;
             }
 
             // ✅ WiFi Pro - 🌐
             const temWifiPro = /WiFi\s*Pro|Wi-Fi\s*Pro|WifiPro|wifipro|WiFi\s*PRO|WI-FI\s*PRO|wifi\s+profissional|wi-fi\s+profissional/i.test(textoOriginalParaAnalise);
             if (temWifiPro && !alertaAdicionado.wifiPro) {
-                alertContainer.appendChild(criarCardAlerta("🌐 WIFI-PRO: VERIFICAR SE FOI INSTALADO!", "#f3e5f5", "#4a148c", "#9c27b0"));
+                alertContainer.appendChild(criarCardAlerta(
+                    "WIFI-PRO: VERIFICAR SE FOI INSTALADO!",
+                    "#f3e5f5", "#4a148c", "#9c27b0", "🌐"
+                ));
                 alertaAdicionado.wifiPro = true;
             }
 
-            // ✅ Portabilidade - 💚 (coração verde)
-            const temPortabilidade = /Portabilidade|portabilidade|PORTABILIDADE/i.test(textoOriginalParaAnalise);
+            // ✅ Portabilidade - CORRIGIDO! (palavra exata)
+            const temPortabilidade = /\bportabilidade\b/i.test(textoOriginalParaAnalise);
             if (temPortabilidade && !alertaAdicionado.portabilidade) {
-                alertContainer.appendChild(criarCardAlerta("💚 PORTABILIDADE ATIVA: VERIFICAR A PORTABILIDADE!", "#e8f5e9", "#1b5e20", "#4caf50"));
+                alertContainer.appendChild(criarCardAlerta(
+                    "PORTABILIDADE ATIVA: VERIFICAR A PORTABILIDADE!",
+                    "#e8f5e9", "#1b5e20", "#4caf50", "💚"
+                ));
                 alertaAdicionado.portabilidade = true;
             }
 
-        } catch (err) { console.error("Erro Notificador:", err); }
+            // ✅ Migração de Tecnologia - 🔄 (NOVO!)
+            const temMigracao = /\bmigração\b|\bmigracao\b|\btroca\s+de\s+tecnologia\b/i.test(textoOriginalParaAnalise);
+            if (temMigracao && !alertaAdicionado.migracao) {
+                alertContainer.appendChild(criarCardAlerta(
+                    "MIGRAÇÃO DE TECNOLOGIA: VERIFICAR O PROCESSO!",
+                    "#e8eaf6", "#283593", "#3f51b5", "🔄"
+                ));
+                alertaAdicionado.migracao = true;
+            }
+
+            // ✅ Mudança de Plano - 📊 (NOVO!)
+            const temMudancaPlano = /\bmudança\s+de\s+plano\b|\btroca\s+de\s+plano\b|\balteração\s+de\s+plano\b/i.test(textoOriginalParaAnalise);
+            if (temMudancaPlano && !alertaAdicionado.mudancaPlano) {
+                alertContainer.appendChild(criarCardAlerta(
+                    "MUDANÇA DE PLANO: VERIFICAR O NOVO PLANO!",
+                    "#fff8e1", "#e65100", "#ff8f00", "📊"
+                ));
+                alertaAdicionado.mudancaPlano = true;
+            }
+
+        } catch (err) {
+            console.error("Erro Notificador:", err);
+        }
     }
 
     // =========================================================================
-    // MÓDULO 2: AUDITOR DE ESTOQUE (MANTIDO)
+    // MÓDULO 2: AUDITOR DE ESTOQUE
     // =========================================================================
     function abaConsumoEstaAtiva(doc) {
         const spansAba = doc.querySelectorAll('.MuiTab-wrapper');
@@ -241,7 +304,9 @@
     }
 
     function analisarGridMateriais(doc) {
-        let errosItens = []; let errosQtd = [];
+        let errosItens = [];
+        let errosQtd = [];
+
         if (!abaConsumoEstaAtiva(doc)) return { errosItens, errosQtd };
 
         const linhasGrid = doc.querySelectorAll('tr.line, [role="row"], .rt-tr, [id*="datagrid_row" i]');
@@ -254,14 +319,20 @@
                     let ferramenta = listaFerramentasNormalizada.find(f => itemNorm === f || itemNorm.includes(f));
 
                     if (ferramenta) {
-                        if (!errosItens.some(e => e.item === txtProd)) errosItens.push({ item: txtProd, motivo: "FERRAMENTA DE TéCNICO! NÃO ALOCAR NO CONSUMO!" });
+                        if (!errosItens.some(e => e.item === txtProd)) {
+                            errosItens.push({ item: txtProd, motivo: "FERRAMENTA DE TÉCNICO! NÃO ALOCAR NO CONSUMO!" });
+                        }
                     } else if (itemNorm && !listaPermitidaNormalizada.includes(itemNorm) && itemNorm !== "PRODUTO") {
-                        if (!errosItens.some(e => e.item === txtProd)) errosItens.push({ item: txtProd, motivo: "NÃO ALOCAR COMO CONSUMO INTERNO!" });
+                        if (!errosItens.some(e => e.item === txtProd)) {
+                            errosItens.push({ item: txtProd, motivo: "NÃO ALOCAR COMO CONSUMO INTERNO!" });
+                        }
                     }
 
                     if (itemNorm === CABO_DROP_NORMALIZADO) {
                         const qVal = parseFloat(celulas[2].textContent.trim().replace(',', '.'));
-                        if (!isNaN(qVal) && qVal > 350) errosQtd.push({ item: txtProd, qtd: qVal });
+                        if (!isNaN(qVal) && qVal > 350) {
+                            errosQtd.push({ item: txtProd, qtd: qVal });
+                        }
                     }
                 }
             }
@@ -271,7 +342,8 @@
 
     function rodarAuditoriaGlobal() {
         try {
-            let todosErrosItens = []; let todosErrosQtd = [];
+            let todosErrosItens = [];
+            let todosErrosQtd = [];
 
             const resPrincipal = analisarGridMateriais(document);
             todosErrosItens = todosErrosItens.concat(resPrincipal.errosItens);
@@ -293,7 +365,9 @@
             todosErrosQtd.filter((v, i, a) => a.findIndex(t => (t.item === v.item && t.qtd === v.qtd)) === i).forEach(e => {
                 auditorContainer.appendChild(criarCardErroQuantidade(e.item, e.qtd));
             });
-        } catch (err) { console.error("Erro Auditoria Global:", err); }
+        } catch (err) {
+            console.error("Erro Auditoria Global:", err);
+        }
     }
 
     // =========================================================================
@@ -301,8 +375,18 @@
     // =========================================================================
     setInterval(rodarAuditoriaGlobal, 1500);
 
-    const observador = new MutationObserver(() => { try { processarAlertas(); } catch (e) {} });
+    const observador = new MutationObserver(() => {
+        try {
+            processarAlertas();
+        } catch (e) {}
+    });
     observador.observe(document.body, { childList: true, subtree: true });
-    try { processarAlertas(); } catch (e) {}
+
+    try {
+        processarAlertas();
+    } catch (e) {}
+
+    console.log(`✅ ${SCRIPT_VERSION} - Alertas: OsirFone, OsirMóvel, WiFi Pro, Portabilidade, Migração, Mudança de Plano`);
+    console.log(`✅ Auditor de estoque ativo`);
 
 })();
