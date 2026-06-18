@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Osir - Assistente de Provisionamento
 // @namespace    http://tampermonkey.net/
-// @version      2.0.0
-// @description  Janela SÓ com dados do Amarelo, Splitter do Contrato, Ordem Definida
+// @version      2.5.0
+// @description  Janela SÓ com dados do Amarelo, Splitter do Contrato, Ordem Definida + WiFi Pro + Lembrete de Salvar (PERSISTENTE)
 // @author       Alisson Guerreiro
 // @match        *://*.osirnet.com.br/*
 // @match        *://*.osir.net.br/*
@@ -26,7 +26,7 @@
         larguraPadrao: 400,
         alturaMin: 300,
         alturaMax: 800,
-        alturaPadrao: 500,
+        alturaPadrao: 550,
         fonteMin: 9,
         fonteMax: 18,
         fontePadrao: 13,
@@ -40,7 +40,186 @@
     };
 
     // =========================================================================
-    // FUNÇÕES DA JANELA
+    // ESTADO DO WIFI PRO - GLOBAL PERSISTENTE
+    // =========================================================================
+    let wifiProAtivo = false;
+
+    // Carrega estado salvo do WiFi Pro
+    try {
+        const wifiProSalvo = localStorage.getItem('osir_wifi_pro_ativo');
+        if (wifiProSalvo !== null) {
+            wifiProAtivo = wifiProSalvo === 'true';
+        }
+    } catch (e) {}
+
+    function salvarEstadoWifiPro(valor) {
+        wifiProAtivo = valor;
+        try {
+            localStorage.setItem('osir_wifi_pro_ativo', String(valor));
+        } catch (e) {}
+    }
+
+    // =========================================================================
+    // LEMBRETE DE SALVAR - PERSISTENTE (NÃO SOME AO RECARREGAR AJAX)
+    // =========================================================================
+    let lembreteAtivo = false;
+    let elementoLembrete = null;
+    let lembreteIntervalo = null;
+
+    function verificarSeSalvou() {
+        // Verifica se o botão de salvar existe e está desabilitado ou com classe success
+        const btnSalvar = document.getElementById('save-and-coord');
+        if (!btnSalvar) return false;
+        if (btnSalvar.disabled) return true;
+        if (btnSalvar.classList.contains('success')) return true;
+
+        // Verifica se há mensagem de sucesso
+        const msgSucesso = document.querySelector('.alert-success, .success-message, .growl-success');
+        if (msgSucesso && msgSucesso.textContent.includes('sucesso')) return true;
+
+        return false;
+    }
+
+    function fecharLembrete() {
+        if (elementoLembrete) {
+            elementoLembrete.style.animation = 'slideOutTop 0.3s ease';
+            setTimeout(() => {
+                if (elementoLembrete) {
+                    elementoLembrete.remove();
+                    elementoLembrete = null;
+                    lembreteAtivo = false;
+                }
+                if (lembreteIntervalo) {
+                    clearInterval(lembreteIntervalo);
+                    lembreteIntervalo = null;
+                }
+            }, 300);
+        }
+    }
+
+    function mostrarLembreteSalvar() {
+        // Se já tem lembrete ou já salvou, não faz nada
+        if (elementoLembrete) return;
+        if (verificarSeSalvou()) return;
+
+        // Verifica se está na página do contrato (tem campos de autenticação)
+        const temCamposContrato = document.getElementById('AuthenticationContractEquipmentSerialNumber') !== null;
+        if (!temCamposContrato) {
+            return;
+        }
+
+        console.log('🔔 Mostrando lembrete de salvar (persistente)');
+
+        const lembrete = document.createElement('div');
+        lembrete.id = 'osir-lembrete-salvar';
+        lembrete.style.cssText = `
+            position: fixed;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: auto;
+            max-width: 500px;
+            min-width: 300px;
+            background: #fef3c7;
+            border: 2px solid #f59e0b;
+            border-radius: 12px;
+            padding: 12px 20px;
+            z-index: 99999;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+            animation: slideDown 0.3s ease;
+            cursor: default;
+        `;
+
+        lembrete.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="font-size: 24px;">⚠️</div>
+                <div style="flex: 1;">
+                    <div style="font-weight: bold; color: #92400e; font-size: 14px; margin-bottom: 2px;">
+                        Você ainda não salvou!
+                    </div>
+                    <div style="color: #78350f; font-size: 12px; line-height: 1.4;">
+                        Clique no botão <strong>✅</strong> (Salvar) antes de fechar a página.
+                    </div>
+                </div>
+                <button id="osir-fechar-lembrete" style="
+                    background: #f59e0b;
+                    color: #fff;
+                    border: none;
+                    border-radius: 4px;
+                    padding: 4px 12px;
+                    cursor: pointer;
+                    font-size: 11px;
+                    font-weight: bold;
+                    white-space: nowrap;
+                ">Fechar</button>
+            </div>
+        `;
+
+        document.body.appendChild(lembrete);
+        elementoLembrete = lembrete;
+        lembreteAtivo = true;
+
+        document.getElementById('osir-fechar-lembrete').addEventListener('click', function() {
+            fecharLembrete();
+        });
+
+        // Adiciona os estilos se não existirem
+        if (!document.getElementById('osir-lembrete-style')) {
+            const style = document.createElement('style');
+            style.id = 'osir-lembrete-style';
+            style.textContent = `
+                @keyframes slideDown {
+                    from { transform: translateX(-50%) translateY(-100%); opacity: 0; }
+                    to { transform: translateX(-50%) translateY(0); opacity: 1; }
+                }
+                @keyframes slideOutTop {
+                    from { transform: translateX(-50%) translateY(0); opacity: 1; }
+                    to { transform: translateX(-50%) translateY(-100%); opacity: 0; }
+                }
+                #osir-lembrete-salvar {
+                    animation: slideDown 0.3s ease;
+                }
+            `;
+            document.head.appendChild(style);
+        }
+
+        // Verifica periodicamente se salvou
+        if (lembreteIntervalo) {
+            clearInterval(lembreteIntervalo);
+        }
+        lembreteIntervalo = setInterval(() => {
+            if (lembreteAtivo && verificarSeSalvou()) {
+                console.log('✅ Lembrete fechado - contrato salvo!');
+                fecharLembrete();
+            }
+        }, 2000);
+    }
+
+    // Função que monitora mudanças na página e recria o lembrete se necessário
+    function monitorarPaginaParaLembrete() {
+        // Verifica se está na página do contrato
+        const temCamposContrato = document.getElementById('AuthenticationContractEquipmentSerialNumber') !== null;
+
+        if (temCamposContrato) {
+            // Se está na página do contrato e não salvou, mostra o lembrete
+            if (!verificarSeSalvou() && !elementoLembrete) {
+                mostrarLembreteSalvar();
+            }
+            // Se salvou, fecha o lembrete
+            if (verificarSeSalvou() && elementoLembrete) {
+                fecharLembrete();
+            }
+        } else {
+            // Se não está na página do contrato, remove o lembrete
+            if (elementoLembrete) {
+                fecharLembrete();
+            }
+        }
+    }
+
+    // =========================================================================
+    // FUNÇÕES DA JANELA (MANTIDAS IGUAIS)
     // =========================================================================
     function redimensionarJanela(deltaLargura, deltaAltura, deltaFonte) {
         const janela = document.getElementById('osir-floating-window');
@@ -114,9 +293,6 @@
         return slot.toString() + portaFormatada;
     }
 
-    // =========================================================================
-    // FUNÇÃO PARA DEFINIR A PORTA WEB (Bridge=8092, Router=80)
-    // =========================================================================
     function definirPortaWeb(tipoProvisionamento) {
         const tipo = (tipoProvisionamento || "").toLowerCase().trim();
         if (tipo === "b") return "8092";
@@ -124,9 +300,6 @@
         return "80";
     }
 
-    // =========================================================================
-    // DETERMINAR TIPO DE EQUIPAMENTO
-    // =========================================================================
     function determinarTipoEquipamento(tipoProvisionamento, serial) {
         const tipo = (tipoProvisionamento || "").toLowerCase().trim();
         const serialUpper = (serial || "").toUpperCase();
@@ -170,7 +343,7 @@
     }
 
     // =========================================================================
-    // CAPTURAR DADOS DO PROVISIONAMENTO (AMARELO)
+    // CAPTURAR DADOS DO PROVISIONAMENTO
     // =========================================================================
     function capturarDadosDoProvisionamento() {
         console.log('🟡 CAPTURANDO DADOS DO PROVISIONAMENTO...');
@@ -198,6 +371,7 @@
             sinal: "",
             status: "",
             nomeOLT: "",
+            wifiPro: wifiProAtivo,
             telefonia: { temTelefonia: false, numero: '', senha: '', ip: '' }
         };
 
@@ -271,7 +445,6 @@
             }
         }
 
-        console.log('📊 Dados do provisionamento:', dados);
         return dados;
     }
 
@@ -283,6 +456,7 @@
 
         const partes = texto.trim().split("||");
         const telParts = partes[12] ? partes[12].split('||') : [];
+        const wifiPro = partes[14] === '1';
 
         return {
             serial: partes[1] || "XX",
@@ -307,6 +481,7 @@
             sinal: "",
             status: "",
             nomeOLT: partes[10] || "N/A",
+            wifiPro: wifiPro,
             telefonia: {
                 temTelefonia: telParts.length >= 1 && telParts[0] && telParts[0].trim() !== '',
                 numero: telParts[0] || '',
@@ -317,13 +492,14 @@
     }
 
     // =========================================================================
-    // MONTAR COMPLEMENTO - USA SPLITTER DO CONTRATO
+    // MONTAR COMPLEMENTO
     // =========================================================================
     function montarComplemento(dados) {
-        console.log('📝 MONTANDO COMPLEMENTO...');
-        console.log('📞 Dados de telefonia:', dados.telefonia);
-
         let partes = [];
+
+        if (wifiProAtivo) {
+            partes.push("Cliente Wifi Pro");
+        }
 
         const tipoEquip = determinarTipoEquipamento(dados.tipoProvisionamento, dados.serial);
         const temTelefonia = dados.telefonia &&
@@ -343,7 +519,6 @@
             partes.push("Autentica na ZTE");
         }
 
-        // SPLITTER - USA O QUE VOCÊ SELECIONOU NO CONTRATO
         const splitterDoFormulario = document.getElementById('AuthenticationSplitterPortTitle')?.value?.trim() || "";
         const portaSplitterDoFormulario = document.getElementById('AuthenticationSplitterPortPort')?.value?.trim() || "";
 
@@ -352,10 +527,8 @@
                 ? `${splitterDoFormulario} - Porta: ${portaSplitterDoFormulario}`
                 : splitterDoFormulario;
             partes.push(splitterText);
-            console.log('✅ Splitter do contrato:', splitterText);
         } else {
             partes.push(`XX - Porta XX`);
-            console.log('⚠️ Sem splitter no contrato, usando XX - Porta XX');
         }
 
         partes.push(`Slot OLT: ${dados.slot} Porta OLT: ${dados.porta} ID: ${dados.id}`);
@@ -380,9 +553,7 @@
             }
         }
 
-        const resultado = partes.join(" || ");
-        console.log('📝 Complemento final:', resultado);
-        return resultado;
+        return partes.join(" || ");
     }
 
     // =========================================================================
@@ -394,17 +565,15 @@
             : '||||';
 
         const portaWeb = dados.portaWeb || '80';
+        const wifiProStr = wifiProAtivo ? '1' : '0';
 
-        return `OSIRDATA||${dados.serial}||${dados.ssid}||${dados.senha}||${dados.slot}||${dados.porta}||${dados.id}||${dados.contrato}||${dados.vlan}||${dados.pontoAcesso}||${dados.olt}||${dados.tipoProvisionamento}||${telefoniaStr}||${portaWeb}`;
+        return `OSIRDATA||${dados.serial}||${dados.ssid}||${dados.senha}||${dados.slot}||${dados.porta}||${dados.id}||${dados.contrato}||${dados.vlan}||${dados.pontoAcesso}||${dados.olt}||${dados.tipoProvisionamento}||${telefoniaStr}||${portaWeb}||${wifiProStr}`;
     }
 
     // =========================================================================
-    // PREENCHER FORMULÁRIO DO CONTRATO - NÃO ALTERA SPLITTER
+    // PREENCHER FORMULÁRIO DO CONTRATO
     // =========================================================================
     function preencherFormularioContrato(dados) {
-        console.log('📝 PREENCHENDO FORMULÁRIO...');
-
-        // ⚠️ NÃO ALTERA SPLITTER - VOCÊ JÁ SELECIONOU MANUALMENTE
         const mapeamento = [
             { id: 'AuthenticationContractEquipmentSerialNumber', valor: dados.serial },
             { id: 'AuthenticationContractWifiName', valor: dados.ssid },
@@ -445,17 +614,12 @@
                 ipTel.dispatchEvent(new Event('input', { bubbles: true }));
             }
         }
-
-        console.log('✅ Formulário preenchido! (Splitter NÃO foi alterado)');
     }
 
     // =========================================================================
-    // JANELA FLUTUANTE - SÓ DADOS DO AMARELO
+    // JANELA FLUTUANTE
     // =========================================================================
     function criarJanelaFlutuante(dados) {
-        console.log('🪟 CRIANDO JANELA FLUTUANTE (SÓ AMARELO)...');
-        console.log('📊 Dados do Amarelo:', dados);
-
         const contratoParaExibir = dados.contrato || "???";
         const janelaExistente = document.getElementById('osir-floating-window');
         if (janelaExistente) janelaExistente.remove();
@@ -465,9 +629,12 @@
                              dados.telefonia.temTelefonia === true &&
                              dados.telefonia.numero &&
                              dados.telefonia.numero.trim() !== '';
-        const complementoPreview = montarComplemento(dados);
 
-        window.__osir_complemento_atual = complementoPreview;
+        if (dados.wifiPro !== undefined) {
+            salvarEstadoWifiPro(dados.wifiPro);
+        }
+
+        const complementoPreview = montarComplemento(dados);
 
         const janela = document.createElement('div');
         janela.id = 'osir-floating-window';
@@ -512,7 +679,6 @@
 
         const btnMenos = document.createElement('button');
         btnMenos.textContent = '−';
-        btnMenos.title = 'Diminuir janela';
         btnMenos.style.cssText = `background: #e5e7eb; border: none; border-radius: 4px; padding: 2px 8px; cursor: pointer; font-weight: bold; font-size: 16px; color: #374151; transition: background 0.2s; line-height: 1.2;`;
         btnMenos.onmouseover = () => btnMenos.style.background = '#d1d5db';
         btnMenos.onmouseout = () => btnMenos.style.background = '#e5e7eb';
@@ -525,7 +691,6 @@
 
         const btnMais = document.createElement('button');
         btnMais.textContent = '+';
-        btnMais.title = 'Aumentar janela';
         btnMais.style.cssText = `background: #e5e7eb; border: none; border-radius: 4px; padding: 2px 8px; cursor: pointer; font-weight: bold; font-size: 16px; color: #374151; transition: background 0.2s; line-height: 1.2;`;
         btnMais.onmouseover = () => btnMais.style.background = '#d1d5db';
         btnMais.onmouseout = () => btnMais.style.background = '#e5e7eb';
@@ -537,7 +702,6 @@
 
         const btnReset = document.createElement('button');
         btnReset.textContent = '↺';
-        btnReset.title = 'Resetar tamanho padrão';
         btnReset.style.cssText = `background: #e5e7eb; border: none; border-radius: 4px; padding: 2px 8px; cursor: pointer; font-weight: bold; font-size: 16px; color: #374151; transition: background 0.2s; line-height: 1.2;`;
         btnReset.onmouseover = () => btnReset.style.background = '#d1d5db';
         btnReset.onmouseout = () => btnReset.style.background = '#e5e7eb';
@@ -551,7 +715,6 @@
 
         const btnFechar = document.createElement('button');
         btnFechar.textContent = '✕';
-        btnFechar.title = 'Fechar janela';
         btnFechar.style.cssText = `background: #ef4444; border: none; border-radius: 4px; padding: 2px 10px; cursor: pointer; font-weight: bold; font-size: 14px; color: white; transition: background 0.2s; line-height: 1.2;`;
         btnFechar.onmouseover = () => btnFechar.style.background = '#dc2626';
         btnFechar.onmouseout = () => btnFechar.style.background = '#ef4444';
@@ -570,6 +733,7 @@
 
         // BADGE
         const badge = document.createElement('div');
+        badge.className = 'osir-badge';
         badge.style.cssText = `
             background: ${temTelefonia ? '#d1fae5' : '#dbeafe'};
             color: ${temTelefonia ? '#065f46' : '#1e40af'};
@@ -580,7 +744,9 @@
             margin-bottom: 12px;
             text-align: center;
         `;
-        badge.textContent = temTelefonia ? '✅ Dados do Amarelo 📞 Com Telefonia' : '✅ Dados do Amarelo';
+        let badgeTexto = temTelefonia ? '✅ Dados do Amarelo 📞 Com Telefonia' : '✅ Dados do Amarelo';
+        if (wifiProAtivo) badgeTexto += ' 📶 WiFi Pro';
+        badge.textContent = badgeTexto;
         janela.appendChild(badge);
 
         // FONTE DOS DADOS
@@ -597,38 +763,82 @@
         fonteInfo.textContent = '🟡 Dados do Provisionamento (Amarelo)';
         janela.appendChild(fonteInfo);
 
-        // CONTEÚDO - ORDEM DEFINITIVA
+        // CONTEÚDO
         const conteudo = document.createElement('div');
         conteudo.style.cssText = `font-size: ${estadoJanela.fonte}px;`;
 
+        // CHECKBOX WIFI PRO
+        const wifiProContainer = document.createElement('div');
+        wifiProContainer.style.cssText = `
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 6px 0;
+            margin-bottom: 6px;
+            border-bottom: 1px solid #e5e7eb;
+        `;
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.id = 'osir-wifi-pro-checkbox';
+        checkbox.checked = wifiProAtivo;
+        checkbox.style.cssText = `
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+            accent-color: #8b5cf6;
+        `;
+
+        const label = document.createElement('label');
+        label.htmlFor = 'osir-wifi-pro-checkbox';
+        label.textContent = '📶 Cliente WiFi Pro';
+        label.style.cssText = `
+            font-weight: 600;
+            color: #4b5563;
+            font-size: ${estadoJanela.fonte}px;
+            cursor: pointer;
+            user-select: none;
+        `;
+
+        checkbox.addEventListener('change', function() {
+            salvarEstadoWifiPro(this.checked);
+
+            const badge = document.querySelector('#osir-floating-window .osir-badge');
+            if (badge) {
+                let texto = temTelefonia ? '✅ Dados do Amarelo 📞 Com Telefonia' : '✅ Dados do Amarelo';
+                if (wifiProAtivo) texto += ' 📶 WiFi Pro';
+                badge.textContent = texto;
+            }
+
+            const complementoAtualizado = montarComplemento(dados);
+            const previewTexto = document.querySelector('.osir-preview-texto');
+            if (previewTexto) {
+                previewTexto.textContent = complementoAtualizado;
+            }
+        });
+
+        wifiProContainer.appendChild(checkbox);
+        wifiProContainer.appendChild(label);
+        conteudo.appendChild(wifiProContainer);
+
+        // CAMPOS
         const campos = [];
 
-        // 1. PONTO DE ACESSO (NOME OLT)
         if (dados.nomeOLT && dados.nomeOLT !== "" && dados.nomeOLT !== "N/A") {
             campos.push({ label: '📍 Ponto Acesso', valor: dados.nomeOLT });
         } else if (dados.olt && dados.olt !== "" && dados.olt !== "N/A") {
             campos.push({ label: '📍 Ponto Acesso', valor: dados.olt });
         }
 
-        // 2. SLOT OLT
-        campos.push({ label: '📊 Slot OLT', valor: dados.slot || 'XX' });
+        campos.push(
+            { label: '📊 Slot OLT', valor: dados.slot || 'XX' },
+            { label: '🔌 Porta OLT', valor: dados.porta || 'XX' },
+            { label: '🆔 ID ONU', valor: dados.id || 'XX' },
+            { label: '🔌 Serial', valor: dados.serial || 'XX' },
+            { label: '📡 SSID', valor: dados.ssid || 'XX' },
+            { label: '🔑 Senha', valor: dados.senha || 'XX' }
+        );
 
-        // 3. PORTA OLT
-        campos.push({ label: '🔌 Porta OLT', valor: dados.porta || 'XX' });
-
-        // 4. ID ONU
-        campos.push({ label: '🆔 ID ONU', valor: dados.id || 'XX' });
-
-        // 5. SERIAL
-        campos.push({ label: '🔌 Serial', valor: dados.serial || 'XX' });
-
-        // 6. SSID
-        campos.push({ label: '📡 SSID', valor: dados.ssid || 'XX' });
-
-        // 7. SENHA
-        campos.push({ label: '🔑 Senha', valor: dados.senha || 'XX' });
-
-        // 8-10. TELEFONIA (se tiver)
         if (temTelefonia) {
             campos.push(
                 { label: '📞 Número Telefone', valor: dados.telefonia.numero || 'N/A' },
@@ -652,7 +862,9 @@
             label.textContent = campo.label;
             label.style.cssText = `font-weight: 600; color: #4b5563; font-size: ${estadoJanela.fonte}px;`;
 
-            let valorStyle = `
+            const valor = document.createElement('span');
+            valor.textContent = campo.valor;
+            valor.style.cssText = `
                 color: #1f2937;
                 font-family: 'Courier New', monospace;
                 background: #f9fafb;
@@ -664,10 +876,6 @@
                 white-space: nowrap;
                 font-size: ${Math.round(estadoJanela.fonte * 0.95)}px;
             `;
-
-            const valor = document.createElement('span');
-            valor.textContent = campo.valor;
-            valor.style.cssText = valorStyle;
 
             linha.appendChild(label);
             linha.appendChild(valor);
@@ -702,7 +910,7 @@
         previewTexto.textContent = complementoPreview;
         conteudo.appendChild(previewTexto);
 
-        // BOTÃO 1: "🔄 SINCRONIZAR CONTRATO"
+        // BOTÃO SINCRONIZAR
         const btnSincronizar = document.createElement('button');
         btnSincronizar.textContent = '🔄 Sincronizar Contrato';
         btnSincronizar.style.cssText = `
@@ -742,16 +950,17 @@
                     numero: dados.telefonia?.numero || '',
                     senha: dados.telefonia?.senha || '',
                     ip: dados.telefonia?.ip || ''
-                }
+                },
+                wifiPro: wifiProAtivo
             };
 
             const stringSecreta = montarStringOSIRDATA(dadosDaCaixinha);
-            console.log('📋 String sincronizada (Amarelo):', stringSecreta);
 
             navigator.clipboard.writeText(stringSecreta).then(() => {
                 btnSincronizar.textContent = '✅ Sincronizado!';
                 btnSincronizar.style.background = '#10b981';
                 preencherFormularioContrato(dadosDaCaixinha);
+
                 setTimeout(() => {
                     btnSincronizar.textContent = '🔄 Sincronizar Contrato';
                     btnSincronizar.style.background = '#8b5cf6';
@@ -761,7 +970,7 @@
 
         conteudo.appendChild(btnSincronizar);
 
-        // BOTÃO 2: "📝 GERAR COMPLEMENTO"
+        // BOTÃO GERAR COMPLEMENTO
         const btnGerarComplemento = document.createElement('button');
         btnGerarComplemento.textContent = '📝 Gerar Complemento';
         btnGerarComplemento.style.cssText = `
@@ -782,7 +991,6 @@
 
         btnGerarComplemento.onclick = function() {
             const complementoAtualizado = montarComplemento(dados);
-            window.__osir_complemento_atual = complementoAtualizado;
 
             const inputComplementar = document.getElementById('AuthenticationContractComplement');
             if (!inputComplementar) {
@@ -810,253 +1018,24 @@
         conteudo.appendChild(btnGerarComplemento);
         janela.appendChild(conteudo);
         document.body.appendChild(janela);
-
-        setTimeout(() => {
-            if (document.getElementById('osir-floating-window')) janela.remove();
-        }, 300000);
     }
 
     // =========================================================================
-    // FUNÇÃO PARA BUSCAR CAMPO COMPLEMENTAR
-    // =========================================================================
-    function buscarCampoComplementar() {
-        let el = document.getElementById('AuthenticationContractComplement');
-        if (el) return el;
-        el = document.querySelector('input[name="data[AuthenticationContract][complement]"]');
-        if (el) return el;
-        const selectors = [
-            'input[id*="Complement"]',
-            'input[name*="complement"]',
-            'textarea[id*="Complement"]',
-            'textarea[name*="complement"]'
-        ];
-        for (let selector of selectors) {
-            el = document.querySelector(selector);
-            if (el) return el;
-        }
-        const frames = document.querySelectorAll('iframe');
-        for (let frame of frames) {
-            try {
-                const doc = frame.contentDocument || frame.contentWindow.document;
-                el = doc.getElementById('AuthenticationContractComplement');
-                if (el) return el;
-                el = doc.querySelector('input[name="data[AuthenticationContract][complement]"]');
-                if (el) return el;
-            } catch (e) {}
-        }
-        return null;
-    }
-
-    // =========================================================================
-    // FUNÇÃO PARA CRIAR O BOTÃO "📝 CRIAR COMPLEMENTAR (MANUAL)"
-    // =========================================================================
-    function injetarBotaoComplementar() {
-        try {
-            if (document.getElementById('btn-osir-complementar')) {
-                return;
-            }
-
-            const inputComplementar = buscarCampoComplementar();
-            if (!inputComplementar) {
-                console.log('⚠️ Campo complementar não encontrado. Tentando novamente...');
-                return;
-            }
-
-            const pai = inputComplementar.parentNode;
-            if (!pai) {
-                console.log('⚠️ Pai do campo complementar não encontrado.');
-                return;
-            }
-
-            let container = pai;
-            if (pai.classList && pai.classList.contains('controls')) {
-                container = pai;
-            } else {
-                container = document.createElement('div');
-                container.style.cssText = 'display: flex; align-items: center; gap: 8px; flex-wrap: wrap;';
-                pai.insertBefore(container, inputComplementar);
-                container.appendChild(inputComplementar);
-            }
-
-            const botao = document.createElement('button');
-            botao.id = 'btn-osir-complementar';
-            botao.type = 'button';
-            botao.textContent = '📝 Criar Complementar (Manual)';
-            botao.style.cssText = `
-                padding: 5px 14px;
-                background-color: #e11d48;
-                color: #ffffff;
-                border: none;
-                border-radius: 4px;
-                cursor: pointer;
-                font-weight: bold;
-                font-size: 12px;
-                white-space: nowrap;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.15);
-                transition: background 0.2s;
-                flex-shrink: 0;
-            `;
-            botao.onmouseover = () => botao.style.backgroundColor = '#be123c';
-            botao.onmouseout = () => botao.style.backgroundColor = '#e11d48';
-
-            botao.addEventListener('click', async function() {
-                try {
-                    const dados = capturarDadosDoContratoManual();
-                    const tipoEquip = determinarTipoEquipamento(dados.tipoProvisionamento, dados.serial);
-                    const complemento = montarComplementoManual(dados, tipoEquip);
-
-                    inputComplementar.value = complemento;
-                    inputComplementar.dispatchEvent(new Event('input', { bubbles: true }));
-                    inputComplementar.dispatchEvent(new Event('change', { bubbles: true }));
-
-                    botao.textContent = '✅ Criado!';
-                    botao.style.backgroundColor = '#22c55e';
-                    setTimeout(() => {
-                        botao.textContent = '📝 Criar Complementar (Manual)';
-                        botao.style.backgroundColor = '#e11d48';
-                    }, 2000);
-
-                } catch (err) {
-                    console.error('Erro:', err);
-                    alert('❌ Erro ao criar complementar: ' + err.message);
-                }
-            });
-
-            container.appendChild(botao);
-            console.log('✅ Botão "Criar Complementar (Manual)" adicionado!');
-
-        } catch (err) {
-            console.error('Erro ao injetar botão complementar:', err);
-        }
-    }
-
-    // =========================================================================
-    // CAPTURAR DADOS DO CONTRATO (MANUAL - SEM AMARELO)
-    // =========================================================================
-    function capturarDadosDoContratoManual() {
-        console.log('📋 CAPTURANDO DADOS DO CONTRATO (MANUAL)...');
-
-        const dados = {
-            serial: document.getElementById('AuthenticationContractEquipmentSerialNumber')?.value?.trim() || "XX",
-            ssid: document.getElementById('AuthenticationContractWifiName')?.value?.trim() || "XX",
-            senha: document.getElementById('AuthenticationContractWifiPassword')?.value?.trim() || "XX",
-            slot: document.getElementById('AuthenticationContractSlotOlt')?.value?.trim() || "XX",
-            porta: document.getElementById('AuthenticationContractPortOlt')?.value?.trim() || "XX",
-            id: document.getElementById('AuthenticationContractOltId')?.value?.trim() || "XX",
-            vlan: document.getElementById('AuthenticationContractVlan')?.value?.trim() || "XX",
-            splitter: document.getElementById('AuthenticationSplitterPortTitle')?.value?.trim() || "XX",
-            portaSplitter: document.getElementById('AuthenticationSplitterPortPort')?.value?.trim() || "XX",
-            pontoAcesso: document.getElementById('AuthenticationAccessPointTitle')?.value?.trim() || "",
-            tipoProvisionamento: document.getElementById('tipoProvisionamento')?.value?.trim()?.toLowerCase() || "r",
-            portaWeb: document.getElementById('AuthenticationContractEquipmentPort')?.value?.trim() || "80",
-            usuarioONU: document.getElementById('AuthenticationContractEquipmentUser')?.value?.trim() || "",
-            senhaONU: document.getElementById('AuthenticationContractEquipmentPassword')?.value?.trim() || "",
-            contrato: document.getElementById('AuthenticationContractContractId')?.value?.trim() || "",
-            telefonia: { temTelefonia: false, numero: '', senha: '', ip: '' }
-        };
-
-        const numTel = document.getElementById('numeroTelefone01');
-        if (numTel && numTel.value && numTel.value.trim() !== '') {
-            dados.telefonia.temTelefonia = true;
-            dados.telefonia.numero = numTel.value.trim();
-        }
-        const senhaTel = document.getElementById('senhaTelefone');
-        if (senhaTel && senhaTel.value && senhaTel.value.trim() !== '') {
-            dados.telefonia.senha = senhaTel.value.trim();
-        }
-        const ipTel = document.getElementById('ipGerencia');
-        if (ipTel && ipTel.value && ipTel.value.trim() !== '') {
-            dados.telefonia.ip = ipTel.value.trim();
-        }
-
-        console.log('📋 Dados do contrato (manual):', dados);
-        return dados;
-    }
-
-    // =========================================================================
-    // MONTAR COMPLEMENTO MANUAL (USANDO DADOS DO CONTRATO)
-    // =========================================================================
-    function montarComplementoManual(dados, tipoEquip) {
-        console.log('📝 MONTANDO COMPLEMENTO MANUAL...');
-
-        let partes = [];
-
-        const temTelefonia = dados.telefonia &&
-                             dados.telefonia.temTelefonia === true &&
-                             dados.telefonia.numero &&
-                             dados.telefonia.numero.trim() !== '';
-
-        let equipamento = tipoEquip;
-        if (temTelefonia) {
-            equipamento += " + Telefonia";
-        }
-        partes.push(equipamento);
-
-        partes.push(`SN: ${dados.serial}`);
-
-        if (precisaAutenticacao(dados.tipoProvisionamento, dados.serial)) {
-            partes.push("Autentica na ZTE");
-        }
-
-        if (dados.splitter && dados.splitter !== "XX" && dados.splitter !== "") {
-            const splitterText = dados.portaSplitter && dados.portaSplitter !== "XX" && dados.portaSplitter !== ""
-                ? `${dados.splitter} - Porta: ${dados.portaSplitter}`
-                : dados.splitter;
-            partes.push(splitterText);
-        } else {
-            partes.push(`XX - Porta XX`);
-        }
-
-        partes.push(`Slot OLT: ${dados.slot} Porta OLT: ${dados.porta} ID: ${dados.id}`);
-
-        if (dados.ssid !== "XX" && dados.senha !== "XX") {
-            partes.push(`SSID: ${dados.ssid} - Senha: ${dados.senha}`);
-        } else if (dados.ssid !== "XX") {
-            partes.push(`SSID: ${dados.ssid}`);
-        } else if (dados.senha !== "XX") {
-            partes.push(`Senha: ${dados.senha}`);
-        }
-
-        if (temTelefonia) {
-            if (dados.telefonia.numero && dados.telefonia.numero.trim() !== '') {
-                partes.push(`Nº: ${dados.telefonia.numero}`);
-            }
-            if (dados.telefonia.senha && dados.telefonia.senha.trim() !== '') {
-                partes.push(`Senha da Telefonia: ${dados.telefonia.senha}`);
-            }
-            if (dados.telefonia.ip && dados.telefonia.ip.trim() !== '') {
-                partes.push(`IP de Telefonia: ${dados.telefonia.ip}`);
-            }
-        }
-
-        const resultado = partes.join(" || ");
-        console.log('📝 Complemento manual:', resultado);
-        return resultado;
-    }
-
-    // =========================================================================
-    // VERIFICAR DADOS E MOSTRAR JANELA - SÓ AMARELO (PRIORIZA CLIPBOARD)
+    // VERIFICAR DADOS E MOSTRAR JANELA
     // =========================================================================
     async function verificarDadosEMostrarJanela() {
-        console.log('🔍 VERIFICANDO DADOS DO AMARELO...');
-
         let dadosAmarelo = null;
 
-        // PRIORIDADE: CLIPBOARD
         try {
             const texto = await navigator.clipboard.readText();
             if (texto && texto.trim().startsWith("OSIRDATA||")) {
                 dadosAmarelo = extrairDadosDoClipboard(texto);
                 if (dadosAmarelo) {
-                    console.log('✅ Dados do AMARELO (CLIPBOARD):', dadosAmarelo);
-                    console.log('📞 Telefonia:', dadosAmarelo.telefonia);
+                    wifiProAtivo = dadosAmarelo.wifiPro || false;
                 }
             }
-        } catch (e) {
-            console.log('⚠️ Não foi possível ler o clipboard');
-        }
+        } catch (e) {}
 
-        // FALLBACK: localStorage
         if (!dadosAmarelo) {
             try {
                 const salvos = localStorage.getItem('osir_ultimos_dados');
@@ -1064,14 +1043,13 @@
                     const parsed = JSON.parse(salvos);
                     if (parsed && parsed.dados) {
                         dadosAmarelo = parsed.dados;
-                        console.log('📦 Dados do localStorage (fallback):', dadosAmarelo);
+                        wifiProAtivo = dadosAmarelo.wifiPro || false;
                     }
                 }
             } catch (e) {}
         }
 
         if (!dadosAmarelo || !dadosAmarelo.serial || dadosAmarelo.serial === "XX") {
-            console.log('⚠️ Nenhum dado do Amarelo encontrado');
             return;
         }
 
@@ -1079,10 +1057,9 @@
     }
 
     // =========================================================================
-    // PARTE 1: BOTÃO "📥 PREPARAR DADOS" NA FILA DE PROVISIONAMENTO
+    // INJEÇÃO DO BOTÃO NA FILA DE PROVISIONAMENTO
     // =========================================================================
     if (window.location.href.includes(URL_ATENDIMENTO)) {
-
         function injetarBotaoDinamico() {
             if (document.getElementById('btn-copiar-osir-nativo')) return;
 
@@ -1105,10 +1082,7 @@
             }
 
             const referencia = btnChamado || btnConexao;
-            if (!referencia) {
-                console.log('⚠️ Nenhum botão de referência encontrado');
-                return;
-            }
+            if (!referencia) return;
 
             const btnPreparar = document.createElement('a');
             btnPreparar.id = 'btn-copiar-osir-nativo';
@@ -1143,80 +1117,15 @@
 
                 try {
                     const dados = capturarDadosDoProvisionamento();
-
-                    if (dados.serial === "XX") {
-                        const divTopo = document.body;
-                        const matchContrato = divTopo.innerText.match(/Cliente\s*-\s*(\d+)/i);
-                        if (matchContrato && matchContrato[1]) {
-                            dados.contrato = matchContrato[1].trim();
-                        }
-                        dados.ssid = document.getElementById('ssid')?.value?.trim() || "XX";
-                        dados.senha = document.getElementById('senhaSSID')?.value?.trim() || "XX";
-
-                        const inputOlt = document.getElementById('olt');
-                        if (inputOlt && inputOlt.value) dados.olt = inputOlt.value.trim();
-
-                        const inputSlotOLT = document.getElementById('slotOLT');
-                        if (inputSlotOLT && inputSlotOLT.value && inputSlotOLT.value.trim() !== '') {
-                            dados.slot = parseInt(inputSlotOLT.value.trim(), 10).toString();
-                        }
-
-                        const inputPortaOLT = document.getElementById('portaOLT');
-                        if (inputPortaOLT && inputPortaOLT.value && inputPortaOLT.value.trim() !== '') {
-                            dados.porta = parseInt(inputPortaOLT.value.trim(), 10).toString();
-                        }
-
-                        const inputIdOnuOlt = document.getElementById('idOnuOlt');
-                        if (inputIdOnuOlt && inputIdOnuOlt.value !== undefined && inputIdOnuOlt.value !== null && inputIdOnuOlt.value !== '') {
-                            const idValue = parseInt(inputIdOnuOlt.value.trim(), 10);
-                            if (!isNaN(idValue)) {
-                                dados.id = idValue.toString();
-                            }
-                        }
-
-                        const todosInputs = document.querySelectorAll('input');
-                        for (let inp of todosInputs) {
-                            const id = (inp.id || "").toLowerCase();
-                            if (id.includes('serial') && inp.value) {
-                                dados.serial = inp.value.trim().toUpperCase();
-                                break;
-                            }
-                            if (id.includes('tipo') && inp.value) {
-                                const val = inp.value.toLowerCase().trim();
-                                if (val === 'b' || val === 'r') {
-                                    dados.tipoProvisionamento = val;
-                                }
-                            }
-                        }
-                    }
-
-                    const inputNumero = document.getElementById('numeroTelefone01');
-                    const inputSenhaTel = document.getElementById('senhaTelefone');
-                    const inputIp = document.getElementById('ipGerencia');
-
-                    if (inputNumero && inputNumero.value && inputNumero.value.trim() !== '') {
-                        dados.telefonia.temTelefonia = true;
-                        dados.telefonia.numero = inputNumero.value.trim();
-                        console.log(`✅ Telefonia capturada: ${dados.telefonia.numero}`);
-                    }
-                    if (inputSenhaTel && inputSenhaTel.value && inputSenhaTel.value.trim() !== '') {
-                        dados.telefonia.senha = inputSenhaTel.value.trim();
-                    }
-                    if (inputIp && inputIp.value && inputIp.value.trim() !== '') {
-                        dados.telefonia.ip = inputIp.value.trim();
-                    }
-
-                    dados.vlan = calcularVlanOsir(dados.pontoAcesso, dados.slot, dados.porta);
-                    dados.portaWeb = definirPortaWeb(dados.tipoProvisionamento);
-
-                    const complementoTexto = montarComplemento(dados);
+                    dados.wifiPro = wifiProAtivo;
 
                     const telefoniaStr = dados.telefonia.temTelefonia
                         ? `${dados.telefonia.numero}||${dados.telefonia.senha}||${dados.telefonia.ip || ''}`
                         : '||||';
 
                     const contratoParaClipboard = dados.contrato || "Nenhum";
-                    const stringSecreta = `OSIRDATA||${dados.serial}||${dados.ssid}||${dados.senha}||${dados.slot}||${dados.porta}||${dados.id}||${contratoParaClipboard}||${dados.vlan}||${dados.pontoAcesso}||${dados.olt}||${dados.tipoProvisionamento}||${telefoniaStr}||${dados.portaWeb}`;
+                    const wifiProStr = wifiProAtivo ? '1' : '0';
+                    const stringSecreta = `OSIRDATA||${dados.serial}||${dados.ssid}||${dados.senha}||${dados.slot}||${dados.porta}||${dados.id}||${contratoParaClipboard}||${dados.vlan}||${dados.pontoAcesso}||${dados.olt}||${dados.tipoProvisionamento}||${telefoniaStr}||${dados.portaWeb}||${wifiProStr}`;
 
                     try {
                         localStorage.setItem('osir_ultimos_dados', JSON.stringify({
@@ -1227,7 +1136,8 @@
 
                     navigator.clipboard.writeText(stringSecreta).then(() => {
                         const statusTelefonia = dados.telefonia.temTelefonia ? '📞' : '';
-                        btnPreparar.textContent = `✅ ${statusTelefonia}`;
+                        const statusWifi = wifiProAtivo ? '📶' : '';
+                        btnPreparar.textContent = `✅ ${statusTelefonia} ${statusWifi}`;
                         btnPreparar.style.backgroundColor = '#10b981';
 
                         const notificacao = document.createElement('div');
@@ -1249,6 +1159,7 @@
                             <div style="font-weight: bold; margin-bottom: 3px;">✅ Dados preparados!</div>
                             <div style="font-size: 10px; opacity: 0.8;">Contrato: ${contratoParaClipboard}</div>
                             ${dados.telefonia.temTelefonia ? '<div style="font-size: 10px; color: #34d399;">📞 Com Telefonia</div>' : ''}
+                            ${wifiProAtivo ? '<div style="font-size: 10px; color: #60a5fa;">📶 WiFi Pro</div>' : ''}
                         `;
                         document.body.appendChild(notificacao);
 
@@ -1264,7 +1175,6 @@
             });
 
             referencia.parentNode.replaceChild(btnPreparar, referencia);
-            console.log('✅ Botão "Preparar Dados" adicionado!');
         }
 
         setInterval(injetarBotaoDinamico, 800);
@@ -1273,29 +1183,23 @@
     }
 
     // =========================================================================
-    // PARTE 2: BOTÃO "📝 CRIAR COMPLEMENTAR (MANUAL)" NA PÁGINA DO CONTRATO
+    // PÁGINA DO CONTRATO
     // =========================================================================
     if (window.location.href.includes(URL_CONTRATO_VOALLE) ||
         window.location.href.includes(URL_OPERACAO)) {
 
-        let tentativas = 0;
-        const maxTentativas = 10;
-        const intervaloInjecao = setInterval(() => {
-            tentativas++;
-            injetarBotaoComplementar();
-            if (document.getElementById('btn-osir-complementar') || tentativas >= maxTentativas) {
-                clearInterval(intervaloInjecao);
-                console.log(`✅ Botão injetado após ${tentativas} tentativas`);
-            }
-        }, 1500);
+        // Mostra o lembrete inicial
+        setTimeout(mostrarLembreteSalvar, 3000);
 
+        // Monitora mudanças na página para manter o lembrete visível
+        setInterval(monitorarPaginaParaLembrete, 1500);
+
+        // Mostra a janela flutuante
         setTimeout(verificarDadosEMostrarJanela, 2000);
         setTimeout(verificarDadosEMostrarJanela, 4000);
     }
 
-    console.log('🚀 Osir Assistente v2.0.0 carregado!');
-    console.log('📋 Janela flutuante = SÓ DADOS DO AMARELO');
-    console.log('📦 Splitter = DO CONTRATO (você seleciona manualmente)');
-    console.log('📞 Telefonia: SENHA e IP preservados!');
-    console.log('📌 Ordem dos campos: Ponto Acesso, Slot, Porta OLT, ID, Serial, SSID, Senha, Telefonia');
+    console.log('🚀 Osir Assistente v2.5.0 carregado!');
+    console.log('💾 Lembrete de salvar PERSISTENTE - não some ao recarregar AJAX');
+    console.log('📍 Lembrete posicionado no TOPO da tela');
 })();
