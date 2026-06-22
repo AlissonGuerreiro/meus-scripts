@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Osir - Assistente de Provisionamento
 // @namespace    http://tampermonkey.net/
-// @version      3.0.0
+// @version      5.0.0
 // @description  CORRIGIDO: Posição correta de telefonia! Janela + Complemento + WiFi Pro + NOVA JANELA RB + OMADA
 // @author       Alisson Guerreiro
 // @match        *://*.osirnet.com.br/*
