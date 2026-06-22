@@ -2,7 +2,7 @@
 // @name         Osir - Assistente de Provisionamento
 // @namespace    http://tampermonkey.net/
 // @version      3.0.0
-// @description  CORRIGIDO: Posição correta de telefonia! Janela + Complemento + WiFi Pro
+// @description  CORRIGIDO: Posição correta de telefonia! Janela + Complemento + WiFi Pro + NOVA JANELA RB + OMADA
 // @author       Alisson Guerreiro
 // @match        *://*.osirnet.com.br/*
 // @match        *://*.osir.net.br/*
@@ -529,7 +529,7 @@
     }
 
     // =========================================================================
-    // JANELA FLUTUANTE
+    // JANELA FLUTUANTE (DIREITA - ORIGINAL)
     // =========================================================================
     function criarJanelaFlutuante(dados) {
         console.log('🪟 CRIANDO JANELA FLUTUANTE...');
@@ -1207,6 +1207,766 @@
     }
 
     // =========================================================================
+    // ==================== NOVA JANELA DA ESQUERDA (RB + OMADA) ====================
+    // =========================================================================
+
+    // Função auxiliar: obter label do modelo selecionado
+    function getModeloLabel() {
+        const selected = document.querySelector('input[name="modelo-equipamento"]:checked');
+        if (!selected) return 'Bridge';
+        const modelosMap = {
+            'huawei-router': 'Huawei Router',
+            'huawei-bridge': 'Huawei Bridge',
+            'raisecom-router': 'Raisecom Router',
+            'raisecom-bridge': 'Raisecom Bridge (Desativada)',
+            'zte-bridge': 'ZTE Bridge',
+            'zte-router': 'ZTE Router'
+        };
+        return modelosMap[selected.value] || 'Bridge';
+    }
+
+    // Função auxiliar: obter dados do formulário
+    function getDadosDoFormulario() {
+        const serial = document.getElementById('AuthenticationContractEquipmentSerialNumber')?.value?.trim() || 'XX';
+        const slot = document.getElementById('AuthenticationContractSlotOlt')?.value?.trim() || 'XX';
+        const porta = document.getElementById('AuthenticationContractPortOlt')?.value?.trim() || 'XX';
+        const id = document.getElementById('AuthenticationContractOltId')?.value?.trim() || 'XX';
+        const ssid = document.getElementById('AuthenticationContractWifiName')?.value?.trim() || '';
+        const senha = document.getElementById('AuthenticationContractWifiPassword')?.value?.trim() || '';
+        const splitter = document.getElementById('AuthenticationSplitterPortTitle')?.value?.trim() || '';
+        const portaSplitter = document.getElementById('AuthenticationSplitterPortPort')?.value?.trim() || '';
+
+        return { serial, slot, porta, id, ssid, senha, splitter, portaSplitter };
+    }
+
+    // Montar complemento da janela de configuração
+    function montarComplementoConfig() {
+        const modelo = getModeloLabel();
+        const dados = getDadosDoFormulario();
+        const wifiPro = document.getElementById('osir-wifi-pro-check')?.checked || false;
+        const autenticaZTE = document.getElementById('osir-autentica-zte-check')?.checked || false;
+        const autenticaRB = document.getElementById('osir-autentica-rb-check')?.checked || false;
+        const omada = document.getElementById('osir-omada-check')?.checked || false;
+
+        const campoComplemento = document.getElementById('AuthenticationContractComplement');
+        let complementoAtual = campoComplemento?.value || '';
+
+        let ssidPreservado = '';
+        let senhaPreservada = '';
+        let outrosDados = [];
+
+        const partesAtuais = complementoAtual.split('||').map(p => p.trim());
+
+        partesAtuais.forEach(parte => {
+            if (parte.includes('SSID:')) {
+                const match = parte.match(/SSID:\s*([^|]+?)(?:\s+Senha:|$)/);
+                if (match) ssidPreservado = match[1].trim();
+                const senhaMatch = parte.match(/Senha:\s*([^|]+)/);
+                if (senhaMatch) senhaPreservada = senhaMatch[1].trim();
+            } else if (parte.includes('Senha:') && !parte.includes('SSID:')) {
+                const match = parte.match(/Senha:\s*([^|]+)/);
+                if (match) senhaPreservada = match[1].trim();
+            } else if (!parte.includes('SN:') &&
+                     !parte.includes('Splitter:') &&
+                     !parte.includes('Slot OLT:') &&
+                     !parte.includes('Cliente Wifi Pro') &&
+                     !parte.includes('Autentica na ZTE') &&
+                     !parte.includes('Autentica em uma RB') &&
+                     !parte.includes('EAPs configurados no OMADA') &&
+                     !parte.includes('Huawei') &&
+                     !parte.includes('Raisecom') &&
+                     !parte.includes('ZTE') &&
+                     !parte.includes('Bridge') &&
+                     !parte.includes('Router') &&
+                     parte !== '' &&
+                     !parte.includes('XX - Porta XX')) {
+                if (parte.trim() !== '') {
+                    outrosDados.push(parte.trim());
+                }
+            }
+        });
+
+        if (!ssidPreservado) {
+            ssidPreservado = document.getElementById('AuthenticationContractWifiName')?.value?.trim() || '';
+        }
+        if (!senhaPreservada) {
+            senhaPreservada = document.getElementById('AuthenticationContractWifiPassword')?.value?.trim() || '';
+        }
+
+        let partes = [];
+
+        if (wifiPro) partes.push('Cliente Wifi Pro');
+        partes.push(modelo);
+        if (dados.serial && dados.serial !== 'XX') partes.push(`SN: ${dados.serial}`);
+        if (autenticaZTE) partes.push('Autentica na ZTE');
+        if (autenticaRB) partes.push('Autentica em uma RB');
+        if (omada) partes.push('EAPs configurados no OMADA');
+
+        if (dados.splitter && dados.splitter !== '') {
+            const portaSplitter = dados.portaSplitter && dados.portaSplitter !== ''
+                ? dados.portaSplitter.padStart(2, '0')
+                : 'XX';
+            partes.push(`Splitter: ${dados.splitter} Porta: ${portaSplitter}`);
+        } else {
+            partes.push('XX - Porta XX');
+        }
+
+        if (dados.slot && dados.porta && dados.id) {
+            const portaFormatada = dados.porta.padStart(2, '0');
+            partes.push(`Slot OLT: ${dados.slot} Porta OLT: ${portaFormatada} ID: ${dados.id}`);
+        }
+
+        if (ssidPreservado && ssidPreservado !== '') {
+            if (senhaPreservada && senhaPreservada !== '') {
+                partes.push(`SSID: ${ssidPreservado} Senha: ${senhaPreservada}`);
+            } else {
+                partes.push(`SSID: ${ssidPreservado}`);
+            }
+        } else if (senhaPreservada && senhaPreservada !== '') {
+            partes.push(`Senha: ${senhaPreservada}`);
+        }
+
+        if (outrosDados.length > 0) {
+            outrosDados.forEach(obs => {
+                if (obs && obs.trim() !== '') {
+                    partes.push(obs.trim());
+                }
+            });
+        }
+
+        const resultado = partes.join(' || ');
+        const resultadoLimpo = resultado
+            .replace(/\|\|\s*\|\|/g, '||')
+            .replace(/^\s*\|\|\s*/, '')
+            .replace(/\s*\|\|\s*$/, '')
+            .trim();
+
+        return resultadoLimpo;
+    }
+
+    // Atualizar preview da janela de configuração
+    function atualizarPreviewConfig() {
+        const preview = document.getElementById('osir-preview-complement');
+        if (preview) {
+            const complemento = montarComplementoConfig();
+            preview.textContent = complemento || 'Nenhum dado disponível';
+        }
+    }
+
+    // Atualizar complemento no formulário
+    function atualizarComplemento() {
+        const campoComplemento = document.getElementById('AuthenticationContractComplement');
+        if (!campoComplemento) {
+            alert('❌ Campo complementar não encontrado!');
+            return;
+        }
+
+        const complemento = montarComplementoConfig();
+        campoComplemento.value = complemento;
+        campoComplemento.dispatchEvent(new Event('input', { bubbles: true }));
+        campoComplemento.dispatchEvent(new Event('change', { bubbles: true }));
+
+        const btn = document.querySelector('#osir-config-complement-window button:first-of-type');
+        if (btn) {
+            btn.textContent = '✅ Atualizado!';
+            btn.style.background = '#10b981';
+            setTimeout(() => {
+                btn.textContent = '🔄 Atualizar';
+                btn.style.background = '#8b5cf6';
+            }, 2000);
+        }
+
+        atualizarPreviewConfig();
+    }
+
+    // Buscar dados do formulário
+    function buscarDados() {
+        const dados = getDadosDoFormulario();
+        atualizarPreviewConfig();
+
+        const btn = document.querySelector('#osir-config-complement-window button:nth-child(2)');
+        if (btn) {
+            btn.textContent = '✅ Atualizado!';
+            btn.style.background = '#10b981';
+            setTimeout(() => {
+                btn.textContent = '📥 Buscar Dados';
+                btn.style.background = '#3b82f6';
+            }, 2000);
+        }
+    }
+
+    // Gerar automaticamente baseado no serial
+    function gerarAutomatico() {
+        const campoComplemento = document.getElementById('AuthenticationContractComplement');
+        if (!campoComplemento) {
+            alert('❌ Campo complementar não encontrado!');
+            return;
+        }
+
+        const dados = getDadosDoFormulario();
+        let modeloAutomatico = 'Bridge';
+        const serial = dados.serial || '';
+        const serialUpper = serial.toUpperCase();
+
+        if (serialUpper.startsWith('4857') || serialUpper.startsWith('HWTC')) {
+            modeloAutomatico = 'Huawei Bridge';
+        } else if (serialUpper.startsWith('ZTEG') || serialUpper.startsWith('5A544') || serialUpper.startsWith('ZTEGD')) {
+            modeloAutomatico = 'ZTE Bridge';
+        } else if (serialUpper.startsWith('RCMG')) {
+            modeloAutomatico = 'Raisecom Bridge';
+        }
+
+        const precisaZTE = serialUpper.startsWith('5A544') || serialUpper.startsWith('ZTEGD');
+        const wifiPro = wifiProAtivo;
+
+        let ssidPreservado = '';
+        let senhaPreservada = '';
+        let complementoAtual = campoComplemento.value || '';
+
+        const matchSSID = complementoAtual.match(/SSID:\s*([^|]+?)(?:\s+Senha:|$)/);
+        if (matchSSID) {
+            ssidPreservado = matchSSID[1].trim();
+            const senhaMatch = complementoAtual.match(/Senha:\s*([^|]+)/);
+            if (senhaMatch) senhaPreservada = senhaMatch[1].trim();
+        }
+
+        if (!ssidPreservado) ssidPreservado = dados.ssid || '';
+        if (!senhaPreservada) senhaPreservada = dados.senha || '';
+
+        let partes = [];
+
+        if (wifiPro) partes.push('Cliente Wifi Pro');
+        partes.push(modeloAutomatico);
+        if (dados.serial && dados.serial !== 'XX') partes.push(`SN: ${dados.serial}`);
+        if (precisaZTE) partes.push('Autentica na ZTE');
+
+        if (dados.splitter && dados.splitter !== '') {
+            const portaSplitter = dados.portaSplitter && dados.portaSplitter !== ''
+                ? dados.portaSplitter.padStart(2, '0')
+                : 'XX';
+            partes.push(`Splitter: ${dados.splitter} Porta: ${portaSplitter}`);
+        } else {
+            partes.push('XX - Porta XX');
+        }
+
+        if (dados.slot && dados.porta && dados.id) {
+            const portaFormatada = dados.porta.padStart(2, '0');
+            partes.push(`Slot OLT: ${dados.slot} Porta OLT: ${portaFormatada} ID: ${dados.id}`);
+        }
+
+        if (ssidPreservado && ssidPreservado !== '') {
+            if (senhaPreservada && senhaPreservada !== '') {
+                partes.push(`SSID: ${ssidPreservado} Senha: ${senhaPreservada}`);
+            } else {
+                partes.push(`SSID: ${ssidPreservado}`);
+            }
+        } else if (senhaPreservada && senhaPreservada !== '') {
+            partes.push(`Senha: ${senhaPreservada}`);
+        }
+
+        const complementoAutomatico = partes.join(' || ');
+
+        campoComplemento.value = complementoAutomatico;
+        campoComplemento.dispatchEvent(new Event('input', { bubbles: true }));
+        campoComplemento.dispatchEvent(new Event('change', { bubbles: true }));
+
+        atualizarPreviewConfig();
+
+        const btn = document.querySelector('#osir-config-complement-window button:nth-child(3)');
+        if (btn) {
+            btn.textContent = '✅ Gerado!';
+            btn.style.background = '#10b981';
+            setTimeout(() => {
+                btn.textContent = '⚡ Automático';
+                btn.style.background = '#dc2626';
+            }, 2000);
+        }
+
+        const wifiCheck = document.getElementById('osir-wifi-pro-check');
+        const zteCheck = document.getElementById('osir-autentica-zte-check');
+        if (wifiCheck) wifiCheck.checked = wifiPro;
+        if (zteCheck) zteCheck.checked = precisaZTE;
+
+        const modelosMap = {
+            'Huawei Bridge': 'modelo-huawei-bridge',
+            'ZTE Bridge': 'modelo-zte-bridge',
+            'Raisecom Bridge': 'modelo-raisecom-bridge',
+            'Huawei Router': 'modelo-huawei-router',
+            'ZTE Router': 'modelo-zte-router',
+            'Raisecom Router': 'modelo-raisecom-router'
+        };
+        const modeloId = modelosMap[modeloAutomatico];
+        if (modeloId) {
+            const modeloRadio = document.getElementById(modeloId);
+            if (modeloRadio) modeloRadio.checked = true;
+        }
+    }
+
+    // Limpar complemento
+    function limparComplemento() {
+        const campoComplemento = document.getElementById('AuthenticationContractComplement');
+        if (campoComplemento) {
+            campoComplemento.value = '';
+            campoComplemento.dispatchEvent(new Event('input', { bubbles: true }));
+            campoComplemento.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+
+        const wifiCheck = document.getElementById('osir-wifi-pro-check');
+        const zteCheck = document.getElementById('osir-autentica-zte-check');
+        const rbCheck = document.getElementById('osir-autentica-rb-check');
+        const omadaCheck = document.getElementById('osir-omada-check');
+
+        if (wifiCheck) wifiCheck.checked = false;
+        if (zteCheck) zteCheck.checked = false;
+        if (rbCheck) rbCheck.checked = false;
+        if (omadaCheck) omadaCheck.checked = false;
+
+        const defaultModelo = document.getElementById('modelo-huawei-bridge');
+        if (defaultModelo) defaultModelo.checked = true;
+
+        atualizarPreviewConfig();
+
+        const btn = document.querySelector('#osir-config-complement-window button:nth-child(4)');
+        if (btn) {
+            btn.textContent = '✅ Limpo!';
+            btn.style.background = '#10b981';
+            setTimeout(() => {
+                btn.textContent = '❌ Limpar';
+                btn.style.background = '#6b7280';
+            }, 2000);
+        }
+    }
+
+    // Criar janela de configuração do complemento (ESQUERDA)
+    function criarJanelaConfiguracaoComplemento() {
+        if (document.getElementById('osir-config-complement-window')) {
+            return;
+        }
+
+        const menuContainer = document.querySelector('.panel-content .contract-menu');
+        if (!menuContainer) {
+            console.log('⚠️ Menu do contrato não encontrado');
+            return;
+        }
+
+        const contratoId = document.querySelector('.contract-menu')?.getAttribute('data-contractid') || '???';
+        const nomeCliente = document.querySelector('.menu-info p')?.textContent?.trim() || 'Cliente não identificado';
+
+        // REMOVE O BOTÃO VERMELHO SE EXISTIR
+        const botaoVermelho = document.getElementById('btn-osir-complementar-manual');
+        if (botaoVermelho) {
+            botaoVermelho.remove();
+            console.log('🗑️ Botão vermelho removido!');
+        }
+
+        const janela = document.createElement('div');
+        janela.id = 'osir-config-complement-window';
+        janela.style.cssText = `
+            position: relative;
+            margin: 12px 0;
+            width: 100%;
+            max-width: 500px;
+            background: #ffffff;
+            border: 2px solid #8b5cf6;
+            border-radius: 12px;
+            box-shadow: 0 4px 16px rgba(139, 92, 246, 0.15);
+            padding: 16px;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            font-size: 13px;
+            transition: all 0.3s ease;
+        `;
+
+        // HEADER
+        const header = document.createElement('div');
+        header.style.cssText = `
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #f3f4f6;
+        `;
+
+        const titulo = document.createElement('span');
+        titulo.textContent = '⚙️ Configurar Complemento';
+        titulo.style.cssText = 'font-weight: bold; font-size: 15px; color: #1f2937;';
+
+        const btnFechar = document.createElement('button');
+        btnFechar.textContent = '✕';
+        btnFechar.style.cssText = `
+            background: none;
+            border: none;
+            font-size: 18px;
+            cursor: pointer;
+            color: #6b7280;
+            padding: 0 4px;
+            transition: color 0.2s;
+        `;
+        btnFechar.onmouseover = () => btnFechar.style.color = '#ef4444';
+        btnFechar.onmouseout = () => btnFechar.style.color = '#6b7280';
+        btnFechar.onclick = () => janela.remove();
+
+        header.appendChild(titulo);
+        header.appendChild(btnFechar);
+        janela.appendChild(header);
+
+        // INFORMAÇÕES DO CONTRATO
+        const infoContrato = document.createElement('div');
+        infoContrato.style.cssText = `
+            background: #f8fafc;
+            padding: 8px 12px;
+            border-radius: 6px;
+            margin-bottom: 12px;
+            font-size: 12px;
+        `;
+        infoContrato.innerHTML = `
+            <div style="font-weight: 600; color: #1f2937;">📌 CONTRATO #${contratoId}</div>
+            <div style="color: #4b5563; font-size: 11px;">${nomeCliente}</div>
+        `;
+        janela.appendChild(infoContrato);
+
+        // MODELOS
+        const modelosLabel = document.createElement('div');
+        modelosLabel.style.cssText = `
+            font-weight: 600;
+            color: #4b5563;
+            margin: 10px 0 6px 0;
+            font-size: 13px;
+        `;
+        modelosLabel.textContent = '📋 MODELO DO EQUIPAMENTO';
+        janela.appendChild(modelosLabel);
+
+        const modelos = [
+            { id: 'huawei-router', label: 'Huawei Router' },
+            { id: 'huawei-bridge', label: 'Huawei Bridge' },
+            { id: 'raisecom-router', label: 'Raisecom Router' },
+            { id: 'raisecom-bridge', label: 'Raisecom Bridge (Desativada)' },
+            { id: 'zte-bridge', label: 'ZTE Bridge' },
+            { id: 'zte-router', label: 'ZTE Router' }
+        ];
+
+        const modelosContainer = document.createElement('div');
+        modelosContainer.style.cssText = 'margin-bottom: 12px;';
+
+        modelos.forEach((modelo, index) => {
+            const div = document.createElement('div');
+            div.style.cssText = `
+                display: flex;
+                align-items: center;
+                padding: 4px 8px;
+                cursor: pointer;
+                border-radius: 4px;
+                transition: background 0.2s;
+                margin: 1px 0;
+            `;
+            div.onmouseover = () => div.style.background = '#f3f4f6';
+            div.onmouseout = () => div.style.background = 'transparent';
+
+            const radio = document.createElement('input');
+            radio.type = 'radio';
+            radio.name = 'modelo-equipamento';
+            radio.value = modelo.id;
+            radio.id = `modelo-${modelo.id}`;
+            radio.style.cssText = 'margin-right: 8px; accent-color: #8b5cf6;';
+            if (index === 1) radio.checked = true;
+
+            const label = document.createElement('label');
+            label.htmlFor = `modelo-${modelo.id}`;
+            label.textContent = modelo.label;
+            label.style.cssText = 'cursor: pointer; font-size: 13px; color: #1f2937; flex: 1;';
+
+            div.appendChild(radio);
+            div.appendChild(label);
+            modelosContainer.appendChild(div);
+
+            radio.addEventListener('change', function() {
+                if (this.checked) {
+                    atualizarPreviewConfig();
+                }
+            });
+        });
+
+        janela.appendChild(modelosContainer);
+
+        // OPÇÕES ADICIONAIS (COM RB + OMADA)
+        const opcoesLabel = document.createElement('div');
+        opcoesLabel.style.cssText = `
+            font-weight: 600;
+            color: #4b5563;
+            margin: 10px 0 6px 0;
+            font-size: 13px;
+        `;
+        opcoesLabel.textContent = '📋 OPÇÕES ADICIONAIS';
+        janela.appendChild(opcoesLabel);
+
+        const opcoesContainer = document.createElement('div');
+        opcoesContainer.style.cssText = 'margin-bottom: 12px;';
+
+        // WiFi Pro
+        const wifiProDiv = document.createElement('div');
+        wifiProDiv.style.cssText = 'display: flex; align-items: center; padding: 4px 8px;';
+        const wifiProCheck = document.createElement('input');
+        wifiProCheck.type = 'checkbox';
+        wifiProCheck.id = 'osir-wifi-pro-check';
+        wifiProCheck.style.cssText = 'margin-right: 8px; accent-color: #8b5cf6;';
+        wifiProCheck.checked = wifiProAtivo;
+        const wifiProLabel = document.createElement('label');
+        wifiProLabel.htmlFor = 'osir-wifi-pro-check';
+        wifiProLabel.textContent = '📶 Cliente WiFi Pro';
+        wifiProLabel.style.cssText = 'cursor: pointer; font-size: 13px; color: #1f2937;';
+        wifiProDiv.appendChild(wifiProCheck);
+        wifiProDiv.appendChild(wifiProLabel);
+        opcoesContainer.appendChild(wifiProDiv);
+
+        wifiProCheck.addEventListener('change', function() {
+            salvarEstadoWifiPro(this.checked);
+            atualizarPreviewConfig();
+        });
+
+        // Autentica ZTE
+        const zteDiv = document.createElement('div');
+        zteDiv.style.cssText = 'display: flex; align-items: center; padding: 4px 8px;';
+        const zteCheck = document.createElement('input');
+        zteCheck.type = 'checkbox';
+        zteCheck.id = 'osir-autentica-zte-check';
+        zteCheck.style.cssText = 'margin-right: 8px; accent-color: #8b5cf6;';
+        zteCheck.checked = false;
+        const zteLabel = document.createElement('label');
+        zteLabel.htmlFor = 'osir-autentica-zte-check';
+        zteLabel.textContent = '🔐 Autentica na ZTE';
+        zteLabel.style.cssText = 'cursor: pointer; font-size: 13px; color: #1f2937;';
+        zteDiv.appendChild(zteCheck);
+        zteDiv.appendChild(zteLabel);
+        opcoesContainer.appendChild(zteDiv);
+
+        zteCheck.addEventListener('change', function() {
+            atualizarPreviewConfig();
+        });
+
+        // 🔥 NOVO: Autentica em uma RB
+        const rbDiv = document.createElement('div');
+        rbDiv.style.cssText = 'display: flex; align-items: center; padding: 4px 8px;';
+        const rbCheck = document.createElement('input');
+        rbCheck.type = 'checkbox';
+        rbCheck.id = 'osir-autentica-rb-check';
+        rbCheck.style.cssText = 'margin-right: 8px; accent-color: #8b5cf6;';
+        rbCheck.checked = false;
+        const rbLabel = document.createElement('label');
+        rbLabel.htmlFor = 'osir-autentica-rb-check';
+        rbLabel.textContent = '🔄 Autentica em uma RB';
+        rbLabel.style.cssText = 'cursor: pointer; font-size: 13px; color: #1f2937;';
+        rbDiv.appendChild(rbCheck);
+        rbDiv.appendChild(rbLabel);
+        opcoesContainer.appendChild(rbDiv);
+
+        rbCheck.addEventListener('change', function() {
+            atualizarPreviewConfig();
+        });
+
+        // 🔥 NOVO: EAPs configurados no OMADA
+        const omadaDiv = document.createElement('div');
+        omadaDiv.style.cssText = 'display: flex; align-items: center; padding: 4px 8px;';
+        const omadaCheck = document.createElement('input');
+        omadaCheck.type = 'checkbox';
+        omadaCheck.id = 'osir-omada-check';
+        omadaCheck.style.cssText = 'margin-right: 8px; accent-color: #8b5cf6;';
+        omadaCheck.checked = false;
+        const omadaLabel = document.createElement('label');
+        omadaLabel.htmlFor = 'osir-omada-check';
+        omadaLabel.textContent = '📶 EAPs configurados no OMADA';
+        omadaLabel.style.cssText = 'cursor: pointer; font-size: 13px; color: #1f2937;';
+        omadaDiv.appendChild(omadaCheck);
+        omadaDiv.appendChild(omadaLabel);
+        opcoesContainer.appendChild(omadaDiv);
+
+        omadaCheck.addEventListener('change', function() {
+            atualizarPreviewConfig();
+        });
+
+        janela.appendChild(opcoesContainer);
+
+        // PREVIEW
+        const previewLabel = document.createElement('div');
+        previewLabel.style.cssText = `
+            font-weight: 600;
+            color: #4b5563;
+            margin: 10px 0 6px 0;
+            font-size: 13px;
+        `;
+        previewLabel.textContent = '📝 PREVIEW DO COMPLEMENTO';
+        janela.appendChild(previewLabel);
+
+        const previewBox = document.createElement('div');
+        previewBox.id = 'osir-preview-complement';
+        previewBox.style.cssText = `
+            background: #f3f4f6;
+            padding: 10px;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            color: #1f2937;
+            min-height: 40px;
+            word-break: break-all;
+            max-height: 80px;
+            overflow-y: auto;
+            margin-bottom: 12px;
+            border: 1px solid #e5e7eb;
+        `;
+        previewBox.textContent = 'Selecione um modelo e opções...';
+        janela.appendChild(previewBox);
+
+        // BOTÕES
+        const botoesContainer = document.createElement('div');
+        botoesContainer.style.cssText = 'display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap;';
+
+        const btnAtualizar = document.createElement('button');
+        btnAtualizar.textContent = '🔄 Atualizar';
+        btnAtualizar.style.cssText = `
+            flex: 1;
+            padding: 8px 12px;
+            background: #8b5cf6;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 13px;
+            transition: background 0.2s;
+            min-width: 80px;
+        `;
+        btnAtualizar.onmouseover = () => btnAtualizar.style.background = '#7c3aed';
+        btnAtualizar.onmouseout = () => btnAtualizar.style.background = '#8b5cf6';
+        btnAtualizar.onclick = atualizarComplemento;
+
+        const btnBuscar = document.createElement('button');
+        btnBuscar.textContent = '📥 Buscar Dados';
+        btnBuscar.style.cssText = `
+            flex: 1;
+            padding: 8px 12px;
+            background: #3b82f6;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 13px;
+            transition: background 0.2s;
+            min-width: 80px;
+        `;
+        btnBuscar.onmouseover = () => btnBuscar.style.background = '#2563eb';
+        btnBuscar.onmouseout = () => btnBuscar.style.background = '#3b82f6';
+        btnBuscar.onclick = buscarDados;
+
+        const btnAutomatico = document.createElement('button');
+        btnAutomatico.textContent = '⚡ Automático';
+        btnAutomatico.style.cssText = `
+            flex: 1;
+            padding: 8px 12px;
+            background: #dc2626;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 13px;
+            transition: background 0.2s;
+            min-width: 80px;
+        `;
+        btnAutomatico.onmouseover = () => btnAutomatico.style.background = '#b91c1c';
+        btnAutomatico.onmouseout = () => btnAutomatico.style.background = '#dc2626';
+        btnAutomatico.onclick = gerarAutomatico;
+
+        const btnLimpar = document.createElement('button');
+        btnLimpar.textContent = '❌ Limpar';
+        btnLimpar.style.cssText = `
+            flex: 1;
+            padding: 8px 12px;
+            background: #6b7280;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 13px;
+            transition: background 0.2s;
+            min-width: 80px;
+        `;
+        btnLimpar.onmouseover = () => btnLimpar.style.background = '#4b5563';
+        btnLimpar.onmouseout = () => btnLimpar.style.background = '#6b7280';
+        btnLimpar.onclick = limparComplemento;
+
+        botoesContainer.appendChild(btnAtualizar);
+        botoesContainer.appendChild(btnBuscar);
+        botoesContainer.appendChild(btnAutomatico);
+        botoesContainer.appendChild(btnLimpar);
+        janela.appendChild(botoesContainer);
+
+        // ATALHOS RÁPIDOS
+        const atalhosLabel = document.createElement('div');
+        atalhosLabel.style.cssText = `
+            font-weight: 600;
+            color: #4b5563;
+            margin: 6px 0 6px 0;
+            font-size: 12px;
+        `;
+        atalhosLabel.textContent = '⚡ Atalhos:';
+        janela.appendChild(atalhosLabel);
+
+        const atalhosContainer = document.createElement('div');
+        atalhosContainer.style.cssText = 'display: flex; gap: 6px; flex-wrap: wrap;';
+
+        const atalhos = [
+            { id: 'atalho-wifi', label: 'WiFi Pro', acao: () => {
+                wifiProCheck.checked = !wifiProCheck.checked;
+                salvarEstadoWifiPro(wifiProCheck.checked);
+                atualizarPreviewConfig();
+            }},
+            { id: 'atalho-zte', label: 'ZTE', acao: () => {
+                zteCheck.checked = !zteCheck.checked;
+                atualizarPreviewConfig();
+            }},
+            { id: 'atalho-rb', label: 'RB', acao: () => {
+                rbCheck.checked = !rbCheck.checked;
+                atualizarPreviewConfig();
+            }},
+            { id: 'atalho-omada', label: 'OMADA', acao: () => {
+                omadaCheck.checked = !omadaCheck.checked;
+                atualizarPreviewConfig();
+            }}
+        ];
+
+        atalhos.forEach(atalho => {
+            const btn = document.createElement('button');
+            btn.textContent = atalho.label;
+            btn.style.cssText = `
+                padding: 4px 12px;
+                background: #e5e7eb;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 12px;
+                color: #374151;
+                transition: background 0.2s;
+                font-weight: 500;
+            `;
+            btn.onmouseover = () => btn.style.background = '#d1d5db';
+            btn.onmouseout = () => btn.style.background = '#e5e7eb';
+            btn.onclick = atalho.acao;
+            atalhosContainer.appendChild(btn);
+        });
+
+        janela.appendChild(atalhosContainer);
+
+        // Insere a janela após o menu
+        menuContainer.parentNode.insertBefore(janela, menuContainer.nextSibling);
+
+        setTimeout(atualizarPreviewConfig, 100);
+
+        console.log('✅ Janela de Configuração (Esquerda) criada!');
+        console.log('🗑️ Botão vermelho removido!');
+    }
+
+    // =========================================================================
     // INJEÇÃO DO BOTÃO NA FILA DE PROVISIONAMENTO
     // =========================================================================
     if (window.location.href.includes(URL_ATENDIMENTO)) {
@@ -1344,11 +2104,32 @@
 
         setTimeout(verificarDadosEMostrarJanela, 2000);
         setTimeout(verificarDadosEMostrarJanela, 4000);
+
+        // =========================================================================
+        // INJEÇÃO DA NOVA JANELA DA ESQUERDA (RB + OMADA)
+        // =========================================================================
+        let tentativasJanelaEsquerda = 0;
+        const maxTentativasJanelaEsquerda = 15;
+        const intervaloInjecaoJanelaEsquerda = setInterval(() => {
+            tentativasJanelaEsquerda++;
+
+            const menuContainer = document.querySelector('.panel-content .contract-menu');
+            if (menuContainer && !document.getElementById('osir-config-complement-window')) {
+                criarJanelaConfiguracaoComplemento();
+                clearInterval(intervaloInjecaoJanelaEsquerda);
+                console.log(`✅ Janela de Configuração (Esquerda - RB + OMADA) criada após ${tentativasJanelaEsquerda} tentativas`);
+            }
+
+            if (tentativasJanelaEsquerda >= maxTentativasJanelaEsquerda) {
+                clearInterval(intervaloInjecaoJanelaEsquerda);
+            }
+        }, 1000);
     }
 
-    console.log('🚀 Osir Assistente v4.5.2 carregado!');
+    console.log('🚀 Osir Assistente v3.0.0 carregado!');
     console.log('✅ POSIÇÃO CORRIGIDA: Telefonia nas posições 12-14!');
     console.log('📞 TELEFONIA - Nº, Senha e IP extraídos corretamente');
     console.log('📋 JANELA FLUTUANTE - Monta normalmente com telefonia');
     console.log('📝 COMPLEMENTO - Gerado com todos os dados de telefonia');
+    console.log('✅ NOVA JANELA ESQUERDA - RB + OMADA adicionada!');
 })();
