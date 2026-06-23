@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Osir - Assistente de Provisionamento
 // @namespace    http://tampermonkey.net/
-// @version      5.0.0
-// @description  CORRIGIDO: Posição correta de telefonia! Janela + Complemento + WiFi Pro + NOVA JANELA RB + OMADA
+// @version      5.0.5
+// @description  CORRIGIDO: Posição correta de telefonia! Janela + Complemento + WiFi Pro + NOVA JANELA RB + OMADA + JANELA FLUTUANTE CONTRATO SALVO - VERSÃO COMPACTA
 // @author       Alisson Guerreiro
 // @match        *://*.osirnet.com.br/*
 // @match        *://*.osir.net.br/*
@@ -19,19 +19,19 @@
     const URL_OPERACAO = "/legacy/operations/";
 
     // =========================================================================
-    // CONFIGURAÇÕES DA JANELA FLUTUANTE
+    // CONFIGURAÇÕES DA JANELA FLUTUANTE (VERSÃO COMPACTA)
     // =========================================================================
     const CONFIG_JANELA = {
-        larguraMin: 280,
-        larguraMax: 600,
-        larguraPadrao: 400,
-        alturaMin: 300,
-        alturaMax: 800,
-        alturaPadrao: 550,
+        larguraMin: 250,
+        larguraMax: 500,
+        larguraPadrao: 320,
+        alturaMin: 250,
+        alturaMax: 600,
+        alturaPadrao: 400,
         fonteMin: 9,
-        fonteMax: 18,
-        fontePadrao: 13,
-        passo: 20
+        fonteMax: 16,
+        fontePadrao: 11,
+        passo: 15
     };
 
     let estadoJanela = {
@@ -105,37 +105,13 @@
     carregarPreferencias();
 
     // =========================================================================
-    // 🔥 EXTRAIR DADOS DO CLIPBOARD - v4.5.2 CORRIGIDO
+    // EXTRAIR DADOS DO CLIPBOARD
     // =========================================================================
     function extrairDadosDoClipboard(texto) {
         if (!texto || !texto.trim().startsWith("OSIRDATA||")) return null;
 
         const partes = texto.trim().split("||");
 
-        console.log('📋 String OSIRDATA dividida em partes:', partes);
-        console.log('📋 Número de partes:', partes.length);
-        console.log('📋 Estrutura:', {
-            pos0: 'OSIRDATA',
-            pos1: partes[1] + ' (serial)',
-            pos2: partes[2] + ' (ssid)',
-            pos3: partes[3] + ' (senha)',
-            pos4: partes[4] + ' (slot)',
-            pos5: partes[5] + ' (porta)',
-            pos6: partes[6] + ' (id)',
-            pos7: partes[7] + ' (contrato)',
-            pos8: partes[8] + ' (vlan)',
-            pos9: partes[9] + ' (pontoAcesso)',
-            pos10: partes[10] + ' (olt)',
-            pos11: partes[11] + ' (tipoProvisionamento)',
-            pos12: partes[12] + ' (tel_numero)',
-            pos13: partes[13] + ' (tel_senha)',
-            pos14: partes[14] + ' (tel_ip)',
-            pos15: partes[15] + ' (portaWeb)',
-            pos16: partes[16] + ' (sinal)',
-            pos17: partes[17] + ' (wifiPro)'
-        });
-
-        // 🔥 CORREÇÃO v4.5.2: Posições corretas
         const telNumero = partes[12] || '';
         const telSenha = partes[13] || '';
         const telIp = partes[14] || '';
@@ -143,17 +119,7 @@
         const sinal = partes[16] || '';
         const wifiPro = partes[17] === '1';
 
-        // Validar telefonia
         const temTelefonia = telNumero && telNumero.trim() !== '';
-
-        console.log('📞 TELEFONIA EXTRAÍDA:');
-        console.log(`  - Número: "${telNumero}"`);
-        console.log(`  - Senha: "${telSenha}"`);
-        console.log(`  - IP: "${telIp}"`);
-        console.log(`  - Tem telefonia? ${temTelefonia}`);
-        console.log(`  - Sinal: "${sinal}"`);
-        console.log(`  - Porta Web: "${portaWeb}"`);
-        console.log(`  - WiFi Pro: ${wifiPro}`);
 
         return {
             serial: partes[1] || "XX",
@@ -249,7 +215,7 @@
         if (tipo === "b") {
             if (serialUpper.startsWith("4857") || serialUpper.startsWith("HWTC")) return "Huawei Bridge";
             if (serialUpper.startsWith("ZTEG") || serialUpper.startsWith("5A544") || serialUpper.startsWith("ZTEGD")) return "ZTE Bridge";
-            if (serialUpper.startsWith("RCMG")) return "Raisecom Bridge";
+            if (serialUpper.startsWith("RCMG")) return "Raisecom Router";
             return "Bridge";
         }
 
@@ -260,7 +226,7 @@
             return tipo === "b" ? "ZTE Bridge" : "ZTE Bridge";
         }
         if (serialUpper.startsWith("RCMG")) {
-            return tipo === "b" ? "Raisecom Bridge" : "Raisecom Router";
+            return tipo === "b" ? "Raisecom Router" : "Raisecom Router";
         }
         if (serialUpper.startsWith("5A544") || serialUpper.startsWith("ZTEGD")) return "ZTE Bridge";
         return "Equipamento Desconhecido";
@@ -282,8 +248,6 @@
     // CAPTURAR DADOS DO PROVISIONAMENTO
     // =========================================================================
     function capturarDadosDoProvisionamento() {
-        console.log('🟡 CAPTURANDO DADOS DO PROVISIONAMENTO...');
-
         const dados = {
             serial: "XX",
             ssid: "XX",
@@ -347,7 +311,6 @@
 
         if (campos.sinal && campos.sinal.value) {
             dados.sinal = campos.sinal.value.trim();
-            console.log(`📶 SINAL CAPTURADO: ${dados.sinal}`);
         }
 
         if (campos.status && campos.status.value) dados.status = campos.status.value.trim();
@@ -386,7 +349,6 @@
             }
         }
 
-        console.log('📊 Dados capturados:', dados);
         return dados;
     }
 
@@ -459,8 +421,6 @@
     // PREENCHER FORMULÁRIO DO CONTRATO
     // =========================================================================
     function preencherFormularioContrato(dados) {
-        console.log('📝 PREENCHENDO FORMULÁRIO DO CONTRATO...');
-
         const mapeamento = [
             { id: 'AuthenticationContractEquipmentSerialNumber', valor: dados.serial },
             { id: 'AuthenticationContractWifiName', valor: dados.ssid },
@@ -481,37 +441,29 @@
                 el.value = valor;
                 el.dispatchEvent(new Event('input', { bubbles: true }));
                 el.dispatchEvent(new Event('change', { bubbles: true }));
-                console.log(`  ✅ ${id} = ${valor}`);
             }
         });
 
-        // Telefonia
         if (dados.telefonia && dados.telefonia.temTelefonia) {
-            console.log('📞 PREENCHENDO TELEFONIA:');
-
             const numTel = document.getElementById('numeroTelefone01');
             if (numTel && dados.telefonia.numero) {
                 numTel.value = dados.telefonia.numero;
                 numTel.dispatchEvent(new Event('input', { bubbles: true }));
-                console.log(`  ✅ numeroTelefone01 = ${dados.telefonia.numero}`);
             }
 
             const senhaTel = document.getElementById('senhaTelefone');
             if (senhaTel && dados.telefonia.senha) {
                 senhaTel.value = dados.telefonia.senha;
                 senhaTel.dispatchEvent(new Event('input', { bubbles: true }));
-                console.log(`  ✅ senhaTelefone = ${dados.telefonia.senha}`);
             }
 
             const ipTel = document.getElementById('ipGerencia');
             if (ipTel && dados.telefonia.ip) {
                 ipTel.value = dados.telefonia.ip;
                 ipTel.dispatchEvent(new Event('input', { bubbles: true }));
-                console.log(`  ✅ ipGerencia = ${dados.telefonia.ip}`);
             }
         }
 
-        // 🔥 LIMPEZA DO MAC ADDRESS
         const fiberMac = document.getElementById('AuthenticationContractFiberMac');
         const mac = document.getElementById('AuthenticationContractMac');
 
@@ -521,36 +473,22 @@
                 mac.value = '';
                 mac.dispatchEvent(new Event('input', { bubbles: true }));
                 mac.dispatchEvent(new Event('change', { bubbles: true }));
-                console.log('🧹 Mac Address limpo (FiberMac está vazio)');
             }
         }
-
-        console.log('✅ Formulário preenchido!');
     }
 
     // =========================================================================
-    // JANELA FLUTUANTE (DIREITA - ORIGINAL)
+    // JANELA FLUTUANTE (DIREITA) - VERSÃO COMPACTA
     // =========================================================================
     function criarJanelaFlutuante(dados) {
-        console.log('🪟 CRIANDO JANELA FLUTUANTE...');
-        console.log('📊 Dados recebidos:', dados);
-
         const contratoParaExibir = dados.contrato || "???";
         const janelaExistente = document.getElementById('osir-floating-window');
         if (janelaExistente) janelaExistente.remove();
 
-        const tipoEquip = determinarTipoEquipamento(dados.tipoProvisionamento, dados.serial);
         const temTelefonia = dados.telefonia &&
                              dados.telefonia.temTelefonia === true &&
                              dados.telefonia.numero &&
                              dados.telefonia.numero.trim() !== '';
-
-        console.log('📞 Tem telefonia?', temTelefonia);
-        if (temTelefonia) {
-            console.log('  - Nº:', dados.telefonia.numero);
-            console.log('  - Senha:', dados.telefonia.senha);
-            console.log('  - IP:', dados.telefonia.ip);
-        }
 
         if (dados.wifiPro !== undefined) {
             salvarEstadoWifiPro(dados.wifiPro);
@@ -562,71 +500,117 @@
         janela.id = 'osir-floating-window';
         janela.style.cssText = `
             position: fixed;
-            top: 80px;
-            right: 20px;
+            top: 70px;
+            right: 15px;
             width: ${estadoJanela.largura}px;
             max-height: ${estadoJanela.altura}px;
             background: #ffffff;
             border: 2px solid #8b5cf6;
             border-radius: 12px;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.35);
             z-index: 99999;
-            font-family: 'Segoe UI', Arial, sans-serif;
-            padding: 16px;
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+            padding: 14px;
             overflow-y: auto;
-            transition: width 0.3s ease, max-height 0.3s ease;
+            transition: width 0.3s ease, max-height 0.3s ease, box-shadow 0.3s ease;
             font-size: ${estadoJanela.fonte}px;
         `;
 
-        // CABEÇALHO
+        // CABEÇALHO - Compacto
         const header = document.createElement('div');
         header.style.cssText = `
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 12px;
-            padding: 6px 10px;
-            background: #f3f4f6;
+            margin-bottom: 10px;
+            padding: 8px 10px;
+            background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
             border-radius: 8px;
-            gap: 8px;
+            gap: 6px;
             flex-wrap: wrap;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+            border: 1px solid #d1d5db;
         `;
 
         const titulo = document.createElement('span');
         titulo.textContent = `📋 Contrato #${contratoParaExibir}`;
-        titulo.style.cssText = `font-weight: bold; font-size: ${Math.round(estadoJanela.fonte * 1.1)}px; color: #1f2937; flex: 1;`;
+        titulo.style.cssText = `
+            font-weight: 700;
+            font-size: ${Math.round(estadoJanela.fonte * 1.1)}px;
+            color: #1f2937;
+            flex: 1;
+            letter-spacing: 0.2px;
+        `;
 
         const grupoControles = document.createElement('div');
         grupoControles.style.cssText = `display: flex; align-items: center; gap: 4px;`;
 
         const btnMenos = document.createElement('button');
         btnMenos.textContent = '−';
-        btnMenos.style.cssText = `background: #e5e7eb; border: none; border-radius: 4px; padding: 2px 8px; cursor: pointer; font-weight: bold; font-size: 16px; color: #374151; transition: background 0.2s; line-height: 1.2;`;
-        btnMenos.onmouseover = () => btnMenos.style.background = '#d1d5db';
-        btnMenos.onmouseout = () => btnMenos.style.background = '#e5e7eb';
+        btnMenos.style.cssText = `
+            background: #e5e7eb;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            padding: 3px 8px;
+            cursor: pointer;
+            font-weight: 700;
+            font-size: 13px;
+            color: #374151;
+            transition: all 0.2s ease;
+            line-height: 1.2;
+        `;
         btnMenos.onclick = () => { redimensionarJanela(-CONFIG_JANELA.passo, -CONFIG_JANELA.passo, -1); salvarPreferencias(); };
 
         const sizeDisplay = document.createElement('span');
         sizeDisplay.id = 'osir-size-display';
         sizeDisplay.textContent = `${estadoJanela.largura}×${estadoJanela.altura}`;
-        sizeDisplay.style.cssText = `font-size: ${Math.round(estadoJanela.fonte * 0.7)}px; color: #6b7280; padding: 0 4px; min-width: 55px; text-align: center; font-family: monospace;`;
+        sizeDisplay.style.cssText = `
+            font-size: ${Math.round(estadoJanela.fonte * 0.7)}px;
+            color: #6b7280;
+            padding: 2px 6px;
+            min-width: 45px;
+            text-align: center;
+            font-family: 'Courier New', monospace;
+            font-weight: 600;
+            background: #ffffff;
+            border-radius: 3px;
+            border: 1px solid #e5e7eb;
+        `;
 
         const btnMais = document.createElement('button');
         btnMais.textContent = '+';
-        btnMais.style.cssText = `background: #e5e7eb; border: none; border-radius: 4px; padding: 2px 8px; cursor: pointer; font-weight: bold; font-size: 16px; color: #374151; transition: background 0.2s; line-height: 1.2;`;
-        btnMais.onmouseover = () => btnMais.style.background = '#d1d5db';
-        btnMais.onmouseout = () => btnMais.style.background = '#e5e7eb';
+        btnMais.style.cssText = `
+            background: #e5e7eb;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            padding: 3px 8px;
+            cursor: pointer;
+            font-weight: 700;
+            font-size: 13px;
+            color: #374151;
+            transition: all 0.2s ease;
+            line-height: 1.2;
+        `;
         btnMais.onclick = () => { redimensionarJanela(CONFIG_JANELA.passo, CONFIG_JANELA.passo, 1); salvarPreferencias(); };
 
         const sep = document.createElement('span');
         sep.textContent = '|';
-        sep.style.cssText = `color: #d1d5db; padding: 0 2px;`;
+        sep.style.cssText = `color: #d1d5db; padding: 0 3px; font-weight: 300;`;
 
         const btnReset = document.createElement('button');
         btnReset.textContent = '↺';
-        btnReset.style.cssText = `background: #e5e7eb; border: none; border-radius: 4px; padding: 2px 8px; cursor: pointer; font-weight: bold; font-size: 16px; color: #374151; transition: background 0.2s; line-height: 1.2;`;
-        btnReset.onmouseover = () => btnReset.style.background = '#d1d5db';
-        btnReset.onmouseout = () => btnReset.style.background = '#e5e7eb';
+        btnReset.style.cssText = `
+            background: #e5e7eb;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            padding: 3px 8px;
+            cursor: pointer;
+            font-weight: 700;
+            font-size: 13px;
+            color: #374151;
+            transition: all 0.3s ease;
+            line-height: 1.2;
+        `;
         btnReset.onclick = () => {
             estadoJanela.largura = CONFIG_JANELA.larguraPadrao;
             estadoJanela.altura = CONFIG_JANELA.alturaPadrao;
@@ -637,9 +621,19 @@
 
         const btnFechar = document.createElement('button');
         btnFechar.textContent = '✕';
-        btnFechar.style.cssText = `background: #ef4444; border: none; border-radius: 4px; padding: 2px 10px; cursor: pointer; font-weight: bold; font-size: 14px; color: white; transition: background 0.2s; line-height: 1.2;`;
-        btnFechar.onmouseover = () => btnFechar.style.background = '#dc2626';
-        btnFechar.onmouseout = () => btnFechar.style.background = '#ef4444';
+        btnFechar.style.cssText = `
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            border: 1px solid #dc2626;
+            border-radius: 4px;
+            padding: 3px 8px;
+            cursor: pointer;
+            font-weight: 700;
+            font-size: 12px;
+            color: white;
+            transition: all 0.2s ease;
+            line-height: 1.2;
+            box-shadow: 0 1px 3px rgba(239,68,68,0.3);
+        `;
         btnFechar.onclick = () => janela.remove();
 
         grupoControles.appendChild(btnMenos);
@@ -653,51 +647,58 @@
         header.appendChild(grupoControles);
         janela.appendChild(header);
 
-        // BADGE
+        // BADGE - Compacto
         const badge = document.createElement('div');
         badge.className = 'osir-badge';
         badge.style.cssText = `
-            background: ${temTelefonia ? '#d1fae5' : '#dbeafe'};
+            background: ${temTelefonia ? 'linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%)' : 'linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%)'};
             color: ${temTelefonia ? '#065f46' : '#1e40af'};
-            padding: 6px 12px;
+            padding: 6px 10px;
             border-radius: 6px;
             font-size: ${Math.round(estadoJanela.fonte * 0.9)}px;
-            font-weight: 600;
-            margin-bottom: 12px;
+            font-weight: 700;
+            margin-bottom: 8px;
             text-align: center;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+            letter-spacing: 0.2px;
+            border: 1px solid ${temTelefonia ? '#6ee7b7' : '#93c5fd'};
         `;
-        let badgeTexto = temTelefonia ? '✅ Dados do Amarelo 📞 Com Telefonia' : '✅ Dados do Amarelo';
+        let badgeTexto = temTelefonia ? '✅ Dados do Amarelo 📞' : '✅ Dados do Amarelo';
         if (wifiProAtivo) badgeTexto += ' 📶 WiFi Pro';
         badge.textContent = badgeTexto;
         janela.appendChild(badge);
 
-        // FONTE DOS DADOS
+        // FONTE DOS DADOS - Compacto
         const fonteInfo = document.createElement('div');
         fonteInfo.style.cssText = `
-            background: #fef3c7;
+            background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
             color: #92400e;
             padding: 4px 10px;
             border-radius: 4px;
-            font-size: ${Math.round(estadoJanela.fonte * 0.7)}px;
-            margin-bottom: 10px;
+            font-size: ${Math.round(estadoJanela.fonte * 0.75)}px;
+            margin-bottom: 8px;
             text-align: center;
+            font-weight: 600;
+            border: 1px solid #fcd34d;
         `;
-        fonteInfo.textContent = '🟡 Dados do Provisionamento (Amarelo)';
+        fonteInfo.textContent = '🟡 Dados do Provisionamento';
         janela.appendChild(fonteInfo);
 
         // CONTEÚDO
         const conteudo = document.createElement('div');
         conteudo.style.cssText = `font-size: ${estadoJanela.fonte}px;`;
 
-        // CHECKBOX WIFI PRO
+        // CHECKBOX WIFI PRO - Compacto
         const wifiProContainer = document.createElement('div');
         wifiProContainer.style.cssText = `
             display: flex;
             align-items: center;
-            gap: 10px;
-            padding: 6px 0;
+            gap: 8px;
+            padding: 6px 8px;
             margin-bottom: 6px;
             border-bottom: 1px solid #e5e7eb;
+            border-radius: 4px;
+            background: #f9fafb;
         `;
 
         const checkbox = document.createElement('input');
@@ -705,17 +706,17 @@
         checkbox.id = 'osir-wifi-pro-checkbox';
         checkbox.checked = wifiProAtivo;
         checkbox.style.cssText = `
-            width: 18px;
-            height: 18px;
+            width: 15px;
+            height: 15px;
             cursor: pointer;
             accent-color: #8b5cf6;
         `;
 
         const label = document.createElement('label');
         label.htmlFor = 'osir-wifi-pro-checkbox';
-        label.textContent = '📶 Cliente WiFi Pro';
+        label.textContent = '📶 WiFi Pro';
         label.style.cssText = `
-            font-weight: 600;
+            font-weight: 700;
             color: #4b5563;
             font-size: ${estadoJanela.fonte}px;
             cursor: pointer;
@@ -724,14 +725,12 @@
 
         checkbox.addEventListener('change', function() {
             salvarEstadoWifiPro(this.checked);
-
             const badge = document.querySelector('#osir-floating-window .osir-badge');
             if (badge) {
-                let texto = temTelefonia ? '✅ Dados do Amarelo 📞 Com Telefonia' : '✅ Dados do Amarelo';
+                let texto = temTelefonia ? '✅ Dados do Amarelo 📞' : '✅ Dados do Amarelo';
                 if (wifiProAtivo) texto += ' 📶 WiFi Pro';
                 badge.textContent = texto;
             }
-
             const complementoAtualizado = montarComplemento(dados);
             const previewTexto = document.querySelector('.osir-preview-texto');
             if (previewTexto) {
@@ -743,19 +742,19 @@
         wifiProContainer.appendChild(label);
         conteudo.appendChild(wifiProContainer);
 
-        // CAMPOS
+        // CAMPOS - Compacto
         const campos = [];
 
         if (dados.nomeOLT && dados.nomeOLT !== "" && dados.nomeOLT !== "N/A") {
-            campos.push({ label: '📍 Ponto Acesso', valor: dados.nomeOLT });
+            campos.push({ label: '📍 PE', valor: dados.nomeOLT });
         } else if (dados.olt && dados.olt !== "" && dados.olt !== "N/A") {
-            campos.push({ label: '📍 Ponto Acesso', valor: dados.olt });
+            campos.push({ label: '📍 PE', valor: dados.olt });
         }
 
         campos.push(
-            { label: '📊 Slot OLT', valor: dados.slot || 'XX' },
-            { label: '🔌 Porta OLT', valor: dados.porta || 'XX' },
-            { label: '🆔 ID ONU', valor: dados.id || 'XX' },
+            { label: '📊 Slot', valor: dados.slot || 'XX' },
+            { label: '🔌 Porta', valor: dados.porta || 'XX' },
+            { label: '🆔 ID', valor: dados.id || 'XX' },
             { label: '🔌 Serial', valor: dados.serial || 'XX' },
             { label: '📡 SSID', valor: dados.ssid || 'XX' },
             { label: '🔑 Senha', valor: dados.senha || 'XX' }
@@ -763,30 +762,37 @@
 
         if (temTelefonia) {
             campos.push(
-                { label: '📞 Número Telefone', valor: dados.telefonia.numero || 'N/A' }
+                { label: '📞 Tel', valor: dados.telefonia.numero || 'N/A' }
             );
             if (dados.telefonia.senha && dados.telefonia.senha.trim() !== '') {
-                campos.push({ label: '🔑 Senha Telefonia', valor: dados.telefonia.senha });
+                campos.push({ label: '🔑 Senha Tel', valor: dados.telefonia.senha });
             }
             if (dados.telefonia.ip && dados.telefonia.ip.trim() !== '') {
-                campos.push({ label: '🌐 IP Telefonia', valor: dados.telefonia.ip });
+                campos.push({ label: '🌐 IP Tel', valor: dados.telefonia.ip });
             }
         }
 
-        campos.forEach(campo => {
+        campos.forEach((campo) => {
             const linha = document.createElement('div');
             linha.style.cssText = `
                 display: flex;
                 justify-content: space-between;
-                padding: 4px 0;
+                padding: 4px 6px;
                 border-bottom: 1px solid #f3f4f6;
                 font-size: ${estadoJanela.fonte}px;
                 align-items: center;
+                gap: 4px;
+                border-radius: 3px;
             `;
 
             const label = document.createElement('span');
             label.textContent = campo.label;
-            label.style.cssText = `font-weight: 600; color: #4b5563; font-size: ${estadoJanela.fonte}px;`;
+            label.style.cssText = `
+                font-weight: 700;
+                color: #4b5563;
+                font-size: ${estadoJanela.fonte}px;
+                min-width: 60px;
+            `;
 
             const valor = document.createElement('span');
             valor.textContent = campo.valor;
@@ -795,12 +801,14 @@
                 font-family: 'Courier New', monospace;
                 background: #f9fafb;
                 padding: 2px 6px;
-                border-radius: 4px;
+                border-radius: 3px;
                 max-width: ${Math.round(estadoJanela.largura * 0.45)}px;
                 overflow: hidden;
                 text-overflow: ellipsis;
                 white-space: nowrap;
-                font-size: ${Math.round(estadoJanela.fonte * 0.95)}px;
+                font-size: ${Math.round(estadoJanela.fonte * 0.9)}px;
+                font-weight: 600;
+                border: 1px solid #e5e7eb;
             `;
 
             linha.appendChild(label);
@@ -808,13 +816,13 @@
             conteudo.appendChild(linha);
         });
 
-        // COMPLEMENTO
+        // COMPLEMENTO - Compacto
         const previewLabel = document.createElement('div');
         previewLabel.style.cssText = `
-            margin-top: 12px;
-            font-weight: 600;
+            margin-top: 10px;
+            font-weight: 700;
             color: #4b5563;
-            font-size: ${Math.round(estadoJanela.fonte * 0.95)}px;
+            font-size: ${Math.round(estadoJanela.fonte * 0.9)}px;
         `;
         previewLabel.textContent = '📝 Complemento:';
         conteudo.appendChild(previewLabel);
@@ -824,37 +832,37 @@
         previewTexto.style.cssText = `
             margin-top: 4px;
             padding: 8px;
-            background: #f3f4f6;
+            background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
             border-radius: 6px;
             font-family: 'Courier New', monospace;
-            font-size: ${Math.round(estadoJanela.fonte * 0.85)}px;
+            font-size: ${Math.round(estadoJanela.fonte * 0.8)}px;
             color: #1f2937;
             word-break: break-all;
-            max-height: ${Math.round(estadoJanela.altura * 0.15)}px;
+            max-height: ${Math.round(estadoJanela.altura * 0.12)}px;
             overflow-y: auto;
+            border: 1px solid #d1d5db;
+            font-weight: 500;
         `;
         previewTexto.textContent = complementoPreview;
         conteudo.appendChild(previewTexto);
 
-        // BOTÃO SINCRONIZAR
+        // BOTÕES - Compacto
         const btnSincronizar = document.createElement('button');
-        btnSincronizar.textContent = '🔄 Sincronizar Contrato';
+        btnSincronizar.textContent = '🔄 Sincronizar';
         btnSincronizar.style.cssText = `
             width: 100%;
             margin-top: 8px;
-            padding: 8px;
-            background: #8b5cf6;
+            padding: 6px;
+            background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
             color: white;
-            border: none;
+            border: 1px solid #7c3aed;
             border-radius: 6px;
             cursor: pointer;
-            font-weight: bold;
-            font-size: ${Math.round(estadoJanela.fonte * 0.95)}px;
-            transition: background 0.2s;
+            font-weight: 700;
+            font-size: ${Math.round(estadoJanela.fonte * 0.9)}px;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(139,92,246,0.25);
         `;
-        btnSincronizar.onmouseover = () => btnSincronizar.style.background = '#7c3aed';
-        btnSincronizar.onmouseout = () => btnSincronizar.style.background = '#8b5cf6';
-
         btnSincronizar.onclick = () => {
             const dadosDaCaixinha = {
                 serial: dados.serial || "XX",
@@ -881,97 +889,76 @@
                 wifiPro: wifiProAtivo
             };
 
-            console.log('📋 Dados a serem sincronizados:', dadosDaCaixinha);
-
             const stringSecreta = montarStringOSIRDATA(dadosDaCaixinha);
-            console.log('📋 String OSIRDATA gerada:', stringSecreta);
 
             navigator.clipboard.writeText(stringSecreta).then(() => {
-                btnSincronizar.textContent = '✅ Sincronizado!';
-                btnSincronizar.style.background = '#10b981';
+                btnSincronizar.textContent = '✅ OK';
+                btnSincronizar.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
                 preencherFormularioContrato(dadosDaCaixinha);
-
                 setTimeout(() => {
-                    btnSincronizar.textContent = '🔄 Sincronizar Contrato';
-                    btnSincronizar.style.background = '#8b5cf6';
-                }, 2000);
+                    btnSincronizar.textContent = '🔄 Sincronizar';
+                    btnSincronizar.style.background = 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)';
+                }, 1500);
             });
         };
-
         conteudo.appendChild(btnSincronizar);
 
-        // BOTÃO GERAR COMPLEMENTO
         const btnGerarComplemento = document.createElement('button');
-        btnGerarComplemento.textContent = '📝 Gerar Complemento';
+        btnGerarComplemento.textContent = '📝 Complemento';
         btnGerarComplemento.style.cssText = `
             width: 100%;
-            margin-top: 8px;
-            padding: 8px;
-            background: #e11d48;
+            margin-top: 6px;
+            padding: 6px;
+            background: linear-gradient(135deg, #e11d48 0%, #be123c 100%);
             color: white;
-            border: none;
+            border: 1px solid #be123c;
             border-radius: 6px;
             cursor: pointer;
-            font-weight: bold;
-            font-size: ${Math.round(estadoJanela.fonte * 0.95)}px;
-            transition: background 0.2s;
+            font-weight: 700;
+            font-size: ${Math.round(estadoJanela.fonte * 0.9)}px;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(225,29,72,0.2);
         `;
-        btnGerarComplemento.onmouseover = () => btnGerarComplemento.style.background = '#be123c';
-        btnGerarComplemento.onmouseout = () => btnGerarComplemento.style.background = '#e11d48';
-
         btnGerarComplemento.onclick = function() {
             const complementoAtualizado = montarComplemento(dados);
-            console.log('📝 Complemento gerado:', complementoAtualizado);
-
             const inputComplementar = document.getElementById('AuthenticationContractComplement');
-            if (!inputComplementar) {
-                alert('❌ Campo complementar não encontrado!');
-                return;
+            if (inputComplementar) {
+                inputComplementar.value = complementoAtualizado;
+                inputComplementar.dispatchEvent(new Event('input', { bubbles: true }));
+                inputComplementar.dispatchEvent(new Event('change', { bubbles: true }));
             }
-
-            inputComplementar.value = complementoAtualizado;
-            inputComplementar.dispatchEvent(new Event('input', { bubbles: true }));
-            inputComplementar.dispatchEvent(new Event('change', { bubbles: true }));
-
             const previewTexto = document.querySelector('.osir-preview-texto');
             if (previewTexto) {
                 previewTexto.textContent = complementoAtualizado;
             }
-
-            btnGerarComplemento.textContent = '✅ Complemento Gerado!';
-            btnGerarComplemento.style.background = '#22c55e';
+            btnGerarComplemento.textContent = '✅ OK';
+            btnGerarComplemento.style.background = 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)';
             setTimeout(() => {
-                btnGerarComplemento.textContent = '📝 Gerar Complemento';
-                btnGerarComplemento.style.background = '#e11d48';
-            }, 2000);
+                btnGerarComplemento.textContent = '📝 Complemento';
+                btnGerarComplemento.style.background = 'linear-gradient(135deg, #e11d48 0%, #be123c 100%)';
+            }, 1500);
         };
-
         conteudo.appendChild(btnGerarComplemento);
+
         janela.appendChild(conteudo);
         document.body.appendChild(janela);
-        console.log('✅ Janela flutuante criada!');
     }
 
     // =========================================================================
-    // VERIFICAR DADOS E MOSTRAR JANELA (para o contrato)
+    // VERIFICAR DADOS E MOSTRAR JANELA
     // =========================================================================
     async function verificarDadosEMostrarJanela() {
-        console.log('🔍 VERIFICANDO DADOS DO CLIPBOARD...');
         let dadosAmarelo = null;
 
         try {
             const texto = await navigator.clipboard.readText();
-            console.log('📋 Texto do clipboard:', texto);
             if (texto && texto.trim().startsWith("OSIRDATA||")) {
                 dadosAmarelo = extrairDadosDoClipboard(texto);
                 if (dadosAmarelo) {
                     wifiProAtivo = dadosAmarelo.wifiPro || false;
-                    console.log('✅ Dados extraídos com sucesso!');
                 }
             }
-        } catch (e) {
-            console.log('⚠️ Não foi possível ler o clipboard');
-        }
+        } catch (e) {}
 
         if (!dadosAmarelo) {
             try {
@@ -981,236 +968,21 @@
                     if (parsed && parsed.dados) {
                         dadosAmarelo = parsed.dados;
                         wifiProAtivo = dadosAmarelo.wifiPro || false;
-                        console.log('📦 Dados carregados do localStorage (fallback)');
                     }
                 }
             } catch (e) {}
         }
 
         if (!dadosAmarelo || !dadosAmarelo.serial || dadosAmarelo.serial === "XX") {
-            console.log('❌ Nenhum dado válido encontrado');
             return;
         }
 
-        console.log('📊 Dados a serem exibidos na janela:', dadosAmarelo);
         criarJanelaFlutuante(dadosAmarelo);
     }
 
     // =========================================================================
-    // FUNÇÃO PARA BUSCAR CAMPO COMPLEMENTAR
+    // JANELA DA ESQUERDA (CONFIGURAÇÃO) - VERSÃO COMPACTA
     // =========================================================================
-    function buscarCampoComplementar() {
-        let el = document.getElementById('AuthenticationContractComplement');
-        if (el) return el;
-        el = document.querySelector('input[name="data[AuthenticationContract][complement]"]');
-        if (el) return el;
-        const selectors = [
-            'input[id*="Complement"]',
-            'input[name*="complement"]',
-            'textarea[id*="Complement"]',
-            'textarea[name*="complement"]'
-        ];
-        for (let selector of selectors) {
-            el = document.querySelector(selector);
-            if (el) return el;
-        }
-        const frames = document.querySelectorAll('iframe');
-        for (let frame of frames) {
-            try {
-                const doc = frame.contentDocument || frame.contentWindow.document;
-                el = doc.getElementById('AuthenticationContractComplement');
-                if (el) return el;
-                el = doc.querySelector('input[name="data[AuthenticationContract][complement]"]');
-                if (el) return el;
-            } catch (e) {}
-        }
-        return null;
-    }
-
-    // =========================================================================
-    // BOTÃO "COMPLEMENTAR (MANUAL)"
-    // =========================================================================
-    function injetarBotaoComplementarManual() {
-        try {
-            if (document.getElementById('btn-osir-complementar-manual')) {
-                return;
-            }
-
-            const inputComplementar = buscarCampoComplementar();
-            if (!inputComplementar) {
-                console.log('⚠️ Campo complementar não encontrado. Tentando novamente...');
-                return;
-            }
-
-            const pai = inputComplementar.parentNode;
-            if (!pai) {
-                console.log('⚠️ Pai do campo complementar não encontrado.');
-                return;
-            }
-
-            let container = pai;
-            if (pai.classList && pai.classList.contains('controls')) {
-                container = pai;
-            } else {
-                container = document.createElement('div');
-                container.style.cssText = 'display: flex; align-items: center; gap: 8px; flex-wrap: wrap;';
-                pai.insertBefore(container, inputComplementar);
-                container.appendChild(inputComplementar);
-            }
-
-            const botao = document.createElement('button');
-            botao.id = 'btn-osir-complementar-manual';
-            botao.type = 'button';
-            botao.textContent = '📝 Complementar (Manual)';
-            botao.title = 'Atualiza Serial, Slot, Porta, ID, VLAN e mantém SSID/Senha';
-            botao.style.cssText = `
-                padding: 5px 14px;
-                background-color: #e11d48;
-                color: #ffffff;
-                border: none;
-                border-radius: 4px;
-                cursor: pointer;
-                font-weight: bold;
-                font-size: 12px;
-                white-space: nowrap;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.15);
-                transition: background 0.2s;
-                flex-shrink: 0;
-            `;
-            botao.onmouseover = () => botao.style.backgroundColor = '#be123c';
-            botao.onmouseout = () => botao.style.backgroundColor = '#e11d48';
-
-            botao.addEventListener('click', async function() {
-                try {
-                    console.log('📝 Botão "Complementar (Manual)" clicado!');
-
-                    const serial = document.getElementById('AuthenticationContractEquipmentSerialNumber')?.value?.trim() || "XX";
-                    const slot = document.getElementById('AuthenticationContractSlotOlt')?.value?.trim() || "XX";
-                    const porta = document.getElementById('AuthenticationContractPortOlt')?.value?.trim() || "XX";
-                    const id = document.getElementById('AuthenticationContractOltId')?.value?.trim() || "XX";
-                    const ssidAtual = document.getElementById('AuthenticationContractWifiName')?.value?.trim() || "";
-                    const senhaAtual = document.getElementById('AuthenticationContractWifiPassword')?.value?.trim() || "";
-                    const tipoProv = document.getElementById('tipoProvisionamento')?.value?.trim()?.toLowerCase() || "";
-                    const splitter = document.getElementById('AuthenticationSplitterPortTitle')?.value?.trim() || "";
-                    const portaSplitter = document.getElementById('AuthenticationSplitterPortPort')?.value?.trim() || "";
-
-                    let pontoAcesso = document.getElementById('AuthenticationAccessPointTitle')?.value?.trim() || "";
-
-                    const numTel = document.getElementById('numeroTelefone01')?.value?.trim() || "";
-                    const senhaTel = document.getElementById('senhaTelefone')?.value?.trim() || "";
-                    const ipTel = document.getElementById('ipGerencia')?.value?.trim() || "";
-
-                    const vlanCalculada = calcularVlanOsir(pontoAcesso, slot, porta);
-
-                    const dados = {
-                        serial: serial,
-                        ssid: ssidAtual || "XX",
-                        senha: senhaAtual || "XX",
-                        slot: slot,
-                        porta: porta,
-                        id: id,
-                        contrato: document.getElementById('AuthenticationContractContractId')?.value?.trim() || "",
-                        vlan: vlanCalculada,
-                        pontoAcesso: pontoAcesso,
-                        olt: pontoAcesso,
-                        tipoProvisionamento: tipoProv,
-                        portaWeb: tipoProv === 'b' ? '8092' : '80',
-                        splitter: splitter || "XX",
-                        portaSplitter: portaSplitter || "XX",
-                        wifiPro: wifiProAtivo,
-                        sinal: document.getElementById('sinal')?.value?.trim() || "",
-                        telefonia: {
-                            temTelefonia: numTel !== "",
-                            numero: numTel,
-                            senha: senhaTel,
-                            ip: ipTel
-                        }
-                    };
-
-                    // Preenche os campos
-                    const elSerial = document.getElementById('AuthenticationContractEquipmentSerialNumber');
-                    if (elSerial && serial !== "XX") {
-                        elSerial.value = serial;
-                        elSerial.dispatchEvent(new Event('input', { bubbles: true }));
-                        elSerial.dispatchEvent(new Event('change', { bubbles: true }));
-                    }
-
-                    const elSlot = document.getElementById('AuthenticationContractSlotOlt');
-                    if (elSlot && slot !== "XX") {
-                        elSlot.value = slot;
-                        elSlot.dispatchEvent(new Event('input', { bubbles: true }));
-                        elSlot.dispatchEvent(new Event('change', { bubbles: true }));
-                    }
-
-                    const elPorta = document.getElementById('AuthenticationContractPortOlt');
-                    if (elPorta && porta !== "XX") {
-                        elPorta.value = porta;
-                        elPorta.dispatchEvent(new Event('input', { bubbles: true }));
-                        elPorta.dispatchEvent(new Event('change', { bubbles: true }));
-                    }
-
-                    const elId = document.getElementById('AuthenticationContractOltId');
-                    if (elId && id !== "XX") {
-                        elId.value = id;
-                        elId.dispatchEvent(new Event('input', { bubbles: true }));
-                        elId.dispatchEvent(new Event('change', { bubbles: true }));
-                    }
-
-                    const elVlan = document.getElementById('AuthenticationContractVlan');
-                    if (elVlan && vlanCalculada !== "XX") {
-                        elVlan.value = vlanCalculada;
-                        elVlan.dispatchEvent(new Event('input', { bubbles: true }));
-                        elVlan.dispatchEvent(new Event('change', { bubbles: true }));
-                    }
-
-                    const elSsid = document.getElementById('AuthenticationContractWifiName');
-                    if (elSsid && ssidAtual === "" && dados.ssid !== "XX") {
-                        elSsid.value = dados.ssid;
-                        elSsid.dispatchEvent(new Event('input', { bubbles: true }));
-                        elSsid.dispatchEvent(new Event('change', { bubbles: true }));
-                    }
-
-                    const elSenha = document.getElementById('AuthenticationContractWifiPassword');
-                    if (elSenha && senhaAtual === "" && dados.senha !== "XX") {
-                        elSenha.value = dados.senha;
-                        elSenha.dispatchEvent(new Event('input', { bubbles: true }));
-                        elSenha.dispatchEvent(new Event('change', { bubbles: true }));
-                    }
-
-                    const complemento = montarComplemento(dados);
-
-                    inputComplementar.value = complemento;
-                    inputComplementar.dispatchEvent(new Event('input', { bubbles: true }));
-                    inputComplementar.dispatchEvent(new Event('change', { bubbles: true }));
-
-                    botao.textContent = '✅ Atualizado!';
-                    botao.style.backgroundColor = '#22c55e';
-                    setTimeout(() => {
-                        botao.textContent = '📝 Complementar (Manual)';
-                        botao.style.backgroundColor = '#e11d48';
-                    }, 2000);
-
-                    console.log('✅ Complemento gerado e campos atualizados!');
-
-                } catch (err) {
-                    console.error('❌ Erro ao executar Complementar (Manual):', err);
-                    alert('❌ Erro ao executar: ' + err.message);
-                }
-            });
-
-            container.appendChild(botao);
-            console.log('✅ Botão "Complementar (Manual)" adicionado!');
-
-        } catch (err) {
-            console.error('Erro ao injetar botão complementar:', err);
-        }
-    }
-
-    // =========================================================================
-    // ==================== NOVA JANELA DA ESQUERDA (RB + OMADA) ====================
-    // =========================================================================
-
-    // Função auxiliar: obter label do modelo selecionado
     function getModeloLabel() {
         const selected = document.querySelector('input[name="modelo-equipamento"]:checked');
         if (!selected) return 'Bridge';
@@ -1218,14 +990,15 @@
             'huawei-router': 'Huawei Router',
             'huawei-bridge': 'Huawei Bridge',
             'raisecom-router': 'Raisecom Router',
-            'raisecom-bridge': 'Raisecom Bridge (Desativada)',
+            'raisecom-bridge': 'Raisecom Bridge',
+            'raisecom-bridge-desativada': 'Raisecom Bridge (Desativada)',
+            'ektech-bridge': 'Ektech Bridge',
             'zte-bridge': 'ZTE Bridge',
             'zte-router': 'ZTE Router'
         };
         return modelosMap[selected.value] || 'Bridge';
     }
 
-    // Função auxiliar: obter dados do formulário
     function getDadosDoFormulario() {
         const serial = document.getElementById('AuthenticationContractEquipmentSerialNumber')?.value?.trim() || 'XX';
         const slot = document.getElementById('AuthenticationContractSlotOlt')?.value?.trim() || 'XX';
@@ -1239,7 +1012,6 @@
         return { serial, slot, porta, id, ssid, senha, splitter, portaSplitter };
     }
 
-    // Montar complemento da janela de configuração
     function montarComplementoConfig() {
         const modelo = getModeloLabel();
         const dados = getDadosDoFormulario();
@@ -1278,6 +1050,7 @@
                      !parte.includes('ZTE') &&
                      !parte.includes('Bridge') &&
                      !parte.includes('Router') &&
+                     !parte.includes('Ektech') &&
                      parte !== '' &&
                      !parte.includes('XX - Porta XX')) {
                 if (parte.trim() !== '') {
@@ -1297,10 +1070,10 @@
 
         if (wifiPro) partes.push('Cliente Wifi Pro');
         partes.push(modelo);
-        if (dados.serial && dados.serial !== 'XX') partes.push(`SN: ${dados.serial}`);
         if (autenticaZTE) partes.push('Autentica na ZTE');
         if (autenticaRB) partes.push('Autentica em uma RB');
         if (omada) partes.push('EAPs configurados no OMADA');
+        if (dados.serial && dados.serial !== 'XX') partes.push(`SN: ${dados.serial}`);
 
         if (dados.splitter && dados.splitter !== '') {
             const portaSplitter = dados.portaSplitter && dados.portaSplitter !== ''
@@ -1335,16 +1108,13 @@
         }
 
         const resultado = partes.join(' || ');
-        const resultadoLimpo = resultado
+        return resultado
             .replace(/\|\|\s*\|\|/g, '||')
             .replace(/^\s*\|\|\s*/, '')
             .replace(/\s*\|\|\s*$/, '')
             .trim();
-
-        return resultadoLimpo;
     }
 
-    // Atualizar preview da janela de configuração
     function atualizarPreviewConfig() {
         const preview = document.getElementById('osir-preview-complement');
         if (preview) {
@@ -1353,13 +1123,9 @@
         }
     }
 
-    // Atualizar complemento no formulário
     function atualizarComplemento() {
         const campoComplemento = document.getElementById('AuthenticationContractComplement');
-        if (!campoComplemento) {
-            alert('❌ Campo complementar não encontrado!');
-            return;
-        }
+        if (!campoComplemento) return;
 
         const complemento = montarComplementoConfig();
         campoComplemento.value = complemento;
@@ -1368,40 +1134,34 @@
 
         const btn = document.querySelector('#osir-config-complement-window button:first-of-type');
         if (btn) {
-            btn.textContent = '✅ Atualizado!';
-            btn.style.background = '#10b981';
+            btn.textContent = '✅ OK';
+            btn.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
             setTimeout(() => {
                 btn.textContent = '🔄 Atualizar';
-                btn.style.background = '#8b5cf6';
-            }, 2000);
+                btn.style.background = 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)';
+            }, 1500);
         }
-
         atualizarPreviewConfig();
     }
 
-    // Buscar dados do formulário
     function buscarDados() {
-        const dados = getDadosDoFormulario();
+        getDadosDoFormulario();
         atualizarPreviewConfig();
 
         const btn = document.querySelector('#osir-config-complement-window button:nth-child(2)');
         if (btn) {
-            btn.textContent = '✅ Atualizado!';
-            btn.style.background = '#10b981';
+            btn.textContent = '✅ OK';
+            btn.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
             setTimeout(() => {
-                btn.textContent = '📥 Buscar Dados';
-                btn.style.background = '#3b82f6';
-            }, 2000);
+                btn.textContent = '📥 Buscar';
+                btn.style.background = 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)';
+            }, 1500);
         }
     }
 
-    // Gerar automaticamente baseado no serial
     function gerarAutomatico() {
         const campoComplemento = document.getElementById('AuthenticationContractComplement');
-        if (!campoComplemento) {
-            alert('❌ Campo complementar não encontrado!');
-            return;
-        }
+        if (!campoComplemento) return;
 
         const dados = getDadosDoFormulario();
         let modeloAutomatico = 'Bridge';
@@ -1413,7 +1173,7 @@
         } else if (serialUpper.startsWith('ZTEG') || serialUpper.startsWith('5A544') || serialUpper.startsWith('ZTEGD')) {
             modeloAutomatico = 'ZTE Bridge';
         } else if (serialUpper.startsWith('RCMG')) {
-            modeloAutomatico = 'Raisecom Bridge';
+            modeloAutomatico = 'Raisecom Router';
         }
 
         const precisaZTE = serialUpper.startsWith('5A544') || serialUpper.startsWith('ZTEGD');
@@ -1437,8 +1197,8 @@
 
         if (wifiPro) partes.push('Cliente Wifi Pro');
         partes.push(modeloAutomatico);
-        if (dados.serial && dados.serial !== 'XX') partes.push(`SN: ${dados.serial}`);
         if (precisaZTE) partes.push('Autentica na ZTE');
+        if (dados.serial && dados.serial !== 'XX') partes.push(`SN: ${dados.serial}`);
 
         if (dados.splitter && dados.splitter !== '') {
             const portaSplitter = dados.portaSplitter && dados.portaSplitter !== ''
@@ -1474,12 +1234,12 @@
 
         const btn = document.querySelector('#osir-config-complement-window button:nth-child(3)');
         if (btn) {
-            btn.textContent = '✅ Gerado!';
-            btn.style.background = '#10b981';
+            btn.textContent = '✅ OK';
+            btn.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
             setTimeout(() => {
-                btn.textContent = '⚡ Automático';
-                btn.style.background = '#dc2626';
-            }, 2000);
+                btn.textContent = '⚡ Auto';
+                btn.style.background = 'linear-gradient(135deg, #dc2626 0%, #991b1b 100%)';
+            }, 1500);
         }
 
         const wifiCheck = document.getElementById('osir-wifi-pro-check');
@@ -1490,10 +1250,12 @@
         const modelosMap = {
             'Huawei Bridge': 'modelo-huawei-bridge',
             'ZTE Bridge': 'modelo-zte-bridge',
+            'Raisecom Router': 'modelo-raisecom-router',
             'Raisecom Bridge': 'modelo-raisecom-bridge',
+            'Raisecom Bridge (Desativada)': 'modelo-raisecom-bridge-desativada',
+            'Ektech Bridge': 'modelo-ektech-bridge',
             'Huawei Router': 'modelo-huawei-router',
-            'ZTE Router': 'modelo-zte-router',
-            'Raisecom Router': 'modelo-raisecom-router'
+            'ZTE Router': 'modelo-zte-router'
         };
         const modeloId = modelosMap[modeloAutomatico];
         if (modeloId) {
@@ -1502,7 +1264,6 @@
         }
     }
 
-    // Limpar complemento
     function limparComplemento() {
         const campoComplemento = document.getElementById('AuthenticationContractComplement');
         if (campoComplemento) {
@@ -1528,410 +1289,330 @@
 
         const btn = document.querySelector('#osir-config-complement-window button:nth-child(4)');
         if (btn) {
-            btn.textContent = '✅ Limpo!';
-            btn.style.background = '#10b981';
+            btn.textContent = '✅ OK';
+            btn.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
             setTimeout(() => {
                 btn.textContent = '❌ Limpar';
-                btn.style.background = '#6b7280';
-            }, 2000);
+                btn.style.background = 'linear-gradient(135deg, #6b7280 0%, #4b5563 100%)';
+            }, 1500);
         }
     }
 
-    // Criar janela de configuração do complemento (ESQUERDA)
     function criarJanelaConfiguracaoComplemento() {
-        if (document.getElementById('osir-config-complement-window')) {
-            return;
-        }
+        if (document.getElementById('osir-config-complement-window')) return;
 
         const menuContainer = document.querySelector('.panel-content .contract-menu');
-        if (!menuContainer) {
-            console.log('⚠️ Menu do contrato não encontrado');
-            return;
-        }
+        if (!menuContainer) return;
 
         const contratoId = document.querySelector('.contract-menu')?.getAttribute('data-contractid') || '???';
-        const nomeCliente = document.querySelector('.menu-info p')?.textContent?.trim() || 'Cliente não identificado';
-
-        // REMOVE O BOTÃO VERMELHO SE EXISTIR
-        const botaoVermelho = document.getElementById('btn-osir-complementar-manual');
-        if (botaoVermelho) {
-            botaoVermelho.remove();
-            console.log('🗑️ Botão vermelho removido!');
-        }
+        const nomeCliente = document.querySelector('.menu-info p')?.textContent?.trim() || 'Cliente';
 
         const janela = document.createElement('div');
         janela.id = 'osir-config-complement-window';
         janela.style.cssText = `
             position: relative;
-            margin: 12px 0;
+            margin: 10px 0;
             width: 100%;
-            max-width: 500px;
+            max-width: 380px;
             background: #ffffff;
             border: 2px solid #8b5cf6;
-            border-radius: 12px;
-            box-shadow: 0 4px 16px rgba(139, 92, 246, 0.15);
-            padding: 16px;
-            font-family: 'Segoe UI', Arial, sans-serif;
-            font-size: 13px;
+            border-radius: 10px;
+            box-shadow: 0 6px 24px rgba(139, 92, 246, 0.15);
+            padding: 14px;
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+            font-size: 11px;
             transition: all 0.3s ease;
         `;
 
-        // HEADER
         const header = document.createElement('div');
         header.style.cssText = `
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 12px;
+            margin-bottom: 10px;
             padding-bottom: 8px;
-            border-bottom: 2px solid #f3f4f6;
+            border-bottom: 2px solid #e5e7eb;
         `;
 
         const titulo = document.createElement('span');
-        titulo.textContent = '⚙️ Configurar Complemento';
-        titulo.style.cssText = 'font-weight: bold; font-size: 15px; color: #1f2937;';
+        titulo.textContent = '⚙️ Complemento';
+        titulo.style.cssText = `
+            font-weight: 700;
+            font-size: 13px;
+            color: #1f2937;
+            letter-spacing: 0.2px;
+        `;
 
         const btnFechar = document.createElement('button');
         btnFechar.textContent = '✕';
         btnFechar.style.cssText = `
             background: none;
             border: none;
-            font-size: 18px;
+            font-size: 15px;
             cursor: pointer;
             color: #6b7280;
             padding: 0 4px;
-            transition: color 0.2s;
+            transition: all 0.2s ease;
+            font-weight: 700;
         `;
-        btnFechar.onmouseover = () => btnFechar.style.color = '#ef4444';
-        btnFechar.onmouseout = () => btnFechar.style.color = '#6b7280';
         btnFechar.onclick = () => janela.remove();
 
         header.appendChild(titulo);
         header.appendChild(btnFechar);
         janela.appendChild(header);
 
-        // INFORMAÇÕES DO CONTRATO
         const infoContrato = document.createElement('div');
         infoContrato.style.cssText = `
-            background: #f8fafc;
-            padding: 8px 12px;
+            background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+            padding: 6px 10px;
             border-radius: 6px;
-            margin-bottom: 12px;
-            font-size: 12px;
+            margin-bottom: 10px;
+            font-size: 10px;
+            border: 1px solid #e2e8f0;
         `;
         infoContrato.innerHTML = `
-            <div style="font-weight: 600; color: #1f2937;">📌 CONTRATO #${contratoId}</div>
-            <div style="color: #4b5563; font-size: 11px;">${nomeCliente}</div>
+            <div style="font-weight: 700; color: #1f2937;">📌 #${contratoId}</div>
+            <div style="color: #4b5563; font-size: 10px;">${nomeCliente}</div>
         `;
         janela.appendChild(infoContrato);
 
-        // MODELOS
         const modelosLabel = document.createElement('div');
         modelosLabel.style.cssText = `
-            font-weight: 600;
+            font-weight: 700;
             color: #4b5563;
-            margin: 10px 0 6px 0;
-            font-size: 13px;
+            margin: 8px 0 4px 0;
+            font-size: 10px;
+            text-transform: uppercase;
         `;
-        modelosLabel.textContent = '📋 MODELO DO EQUIPAMENTO';
+        modelosLabel.textContent = '📋 Modelo';
         janela.appendChild(modelosLabel);
 
         const modelos = [
             { id: 'huawei-router', label: 'Huawei Router' },
             { id: 'huawei-bridge', label: 'Huawei Bridge' },
             { id: 'raisecom-router', label: 'Raisecom Router' },
-            { id: 'raisecom-bridge', label: 'Raisecom Bridge (Desativada)' },
+            { id: 'raisecom-bridge', label: 'Raisecom Bridge' },
+            { id: 'raisecom-bridge-desativada', label: 'Raisecom Bridge (Des.)' },
+            { id: 'ektech-bridge', label: 'Ektech Bridge' },
             { id: 'zte-bridge', label: 'ZTE Bridge' },
             { id: 'zte-router', label: 'ZTE Router' }
         ];
 
         const modelosContainer = document.createElement('div');
-        modelosContainer.style.cssText = 'margin-bottom: 12px;';
+        modelosContainer.style.cssText = 'margin-bottom: 8px; background: #f9fafb; padding: 6px; border-radius: 6px; border: 1px solid #e5e7eb;';
 
         modelos.forEach((modelo, index) => {
             const div = document.createElement('div');
             div.style.cssText = `
                 display: flex;
                 align-items: center;
-                padding: 4px 8px;
+                padding: 3px 6px;
                 cursor: pointer;
                 border-radius: 4px;
-                transition: background 0.2s;
+                transition: all 0.2s ease;
                 margin: 1px 0;
             `;
-            div.onmouseover = () => div.style.background = '#f3f4f6';
-            div.onmouseout = () => div.style.background = 'transparent';
 
             const radio = document.createElement('input');
             radio.type = 'radio';
             radio.name = 'modelo-equipamento';
             radio.value = modelo.id;
             radio.id = `modelo-${modelo.id}`;
-            radio.style.cssText = 'margin-right: 8px; accent-color: #8b5cf6;';
+            radio.style.cssText = `
+                margin-right: 6px;
+                accent-color: #8b5cf6;
+                cursor: pointer;
+                width: 13px;
+                height: 13px;
+            `;
             if (index === 1) radio.checked = true;
 
             const label = document.createElement('label');
             label.htmlFor = `modelo-${modelo.id}`;
             label.textContent = modelo.label;
-            label.style.cssText = 'cursor: pointer; font-size: 13px; color: #1f2937; flex: 1;';
+            label.style.cssText = `
+                cursor: pointer;
+                font-size: 10px;
+                color: #1f2937;
+                flex: 1;
+                font-weight: 500;
+                user-select: none;
+            `;
 
             div.appendChild(radio);
             div.appendChild(label);
             modelosContainer.appendChild(div);
 
             radio.addEventListener('change', function() {
-                if (this.checked) {
-                    atualizarPreviewConfig();
-                }
+                if (this.checked) atualizarPreviewConfig();
             });
         });
 
         janela.appendChild(modelosContainer);
 
-        // OPÇÕES ADICIONAIS (COM RB + OMADA)
         const opcoesLabel = document.createElement('div');
         opcoesLabel.style.cssText = `
-            font-weight: 600;
+            font-weight: 700;
             color: #4b5563;
-            margin: 10px 0 6px 0;
-            font-size: 13px;
+            margin: 6px 0 4px 0;
+            font-size: 10px;
+            text-transform: uppercase;
         `;
-        opcoesLabel.textContent = '📋 OPÇÕES ADICIONAIS';
+        opcoesLabel.textContent = '📋 Opções';
         janela.appendChild(opcoesLabel);
 
         const opcoesContainer = document.createElement('div');
-        opcoesContainer.style.cssText = 'margin-bottom: 12px;';
+        opcoesContainer.style.cssText = 'margin-bottom: 8px; background: #f9fafb; padding: 6px; border-radius: 6px; border: 1px solid #e5e7eb;';
 
-        // WiFi Pro
-        const wifiProDiv = document.createElement('div');
-        wifiProDiv.style.cssText = 'display: flex; align-items: center; padding: 4px 8px;';
-        const wifiProCheck = document.createElement('input');
-        wifiProCheck.type = 'checkbox';
-        wifiProCheck.id = 'osir-wifi-pro-check';
-        wifiProCheck.style.cssText = 'margin-right: 8px; accent-color: #8b5cf6;';
-        wifiProCheck.checked = wifiProAtivo;
-        const wifiProLabel = document.createElement('label');
-        wifiProLabel.htmlFor = 'osir-wifi-pro-check';
-        wifiProLabel.textContent = '📶 Cliente WiFi Pro';
-        wifiProLabel.style.cssText = 'cursor: pointer; font-size: 13px; color: #1f2937;';
-        wifiProDiv.appendChild(wifiProCheck);
-        wifiProDiv.appendChild(wifiProLabel);
-        opcoesContainer.appendChild(wifiProDiv);
+        const opcoes = [
+            { id: 'osir-wifi-pro-check', label: '📶 WiFi Pro', checked: wifiProAtivo },
+            { id: 'osir-autentica-zte-check', label: '🔐 ZTE', checked: false },
+            { id: 'osir-autentica-rb-check', label: '🔄 RB', checked: false },
+            { id: 'osir-omada-check', label: '📶 OMADA', checked: false }
+        ];
 
-        wifiProCheck.addEventListener('change', function() {
-            salvarEstadoWifiPro(this.checked);
-            atualizarPreviewConfig();
-        });
+        opcoes.forEach((opcao) => {
+            const div = document.createElement('div');
+            div.style.cssText = `
+                display: flex;
+                align-items: center;
+                padding: 3px 6px;
+                border-radius: 4px;
+                transition: all 0.2s ease;
+                margin: 1px 0;
+            `;
 
-        // Autentica ZTE
-        const zteDiv = document.createElement('div');
-        zteDiv.style.cssText = 'display: flex; align-items: center; padding: 4px 8px;';
-        const zteCheck = document.createElement('input');
-        zteCheck.type = 'checkbox';
-        zteCheck.id = 'osir-autentica-zte-check';
-        zteCheck.style.cssText = 'margin-right: 8px; accent-color: #8b5cf6;';
-        zteCheck.checked = false;
-        const zteLabel = document.createElement('label');
-        zteLabel.htmlFor = 'osir-autentica-zte-check';
-        zteLabel.textContent = '🔐 Autentica na ZTE';
-        zteLabel.style.cssText = 'cursor: pointer; font-size: 13px; color: #1f2937;';
-        zteDiv.appendChild(zteCheck);
-        zteDiv.appendChild(zteLabel);
-        opcoesContainer.appendChild(zteDiv);
+            const check = document.createElement('input');
+            check.type = 'checkbox';
+            check.id = opcao.id;
+            check.checked = opcao.checked;
+            check.style.cssText = `
+                margin-right: 6px;
+                accent-color: #8b5cf6;
+                cursor: pointer;
+                width: 13px;
+                height: 13px;
+            `;
 
-        zteCheck.addEventListener('change', function() {
-            atualizarPreviewConfig();
-        });
+            const label = document.createElement('label');
+            label.htmlFor = opcao.id;
+            label.textContent = opcao.label;
+            label.style.cssText = `
+                cursor: pointer;
+                font-size: 10px;
+                color: #1f2937;
+                font-weight: 500;
+                user-select: none;
+            `;
 
-        // 🔥 NOVO: Autentica em uma RB
-        const rbDiv = document.createElement('div');
-        rbDiv.style.cssText = 'display: flex; align-items: center; padding: 4px 8px;';
-        const rbCheck = document.createElement('input');
-        rbCheck.type = 'checkbox';
-        rbCheck.id = 'osir-autentica-rb-check';
-        rbCheck.style.cssText = 'margin-right: 8px; accent-color: #8b5cf6;';
-        rbCheck.checked = false;
-        const rbLabel = document.createElement('label');
-        rbLabel.htmlFor = 'osir-autentica-rb-check';
-        rbLabel.textContent = '🔄 Autentica em uma RB';
-        rbLabel.style.cssText = 'cursor: pointer; font-size: 13px; color: #1f2937;';
-        rbDiv.appendChild(rbCheck);
-        rbDiv.appendChild(rbLabel);
-        opcoesContainer.appendChild(rbDiv);
+            div.appendChild(check);
+            div.appendChild(label);
+            opcoesContainer.appendChild(div);
 
-        rbCheck.addEventListener('change', function() {
-            atualizarPreviewConfig();
-        });
-
-        // 🔥 NOVO: EAPs configurados no OMADA
-        const omadaDiv = document.createElement('div');
-        omadaDiv.style.cssText = 'display: flex; align-items: center; padding: 4px 8px;';
-        const omadaCheck = document.createElement('input');
-        omadaCheck.type = 'checkbox';
-        omadaCheck.id = 'osir-omada-check';
-        omadaCheck.style.cssText = 'margin-right: 8px; accent-color: #8b5cf6;';
-        omadaCheck.checked = false;
-        const omadaLabel = document.createElement('label');
-        omadaLabel.htmlFor = 'osir-omada-check';
-        omadaLabel.textContent = '📶 EAPs configurados no OMADA';
-        omadaLabel.style.cssText = 'cursor: pointer; font-size: 13px; color: #1f2937;';
-        omadaDiv.appendChild(omadaCheck);
-        omadaDiv.appendChild(omadaLabel);
-        opcoesContainer.appendChild(omadaDiv);
-
-        omadaCheck.addEventListener('change', function() {
-            atualizarPreviewConfig();
+            check.addEventListener('change', function() {
+                if (opcao.id === 'osir-wifi-pro-check') {
+                    salvarEstadoWifiPro(this.checked);
+                }
+                atualizarPreviewConfig();
+            });
         });
 
         janela.appendChild(opcoesContainer);
 
-        // PREVIEW
         const previewLabel = document.createElement('div');
         previewLabel.style.cssText = `
-            font-weight: 600;
+            font-weight: 700;
             color: #4b5563;
-            margin: 10px 0 6px 0;
-            font-size: 13px;
+            margin: 6px 0 4px 0;
+            font-size: 10px;
+            text-transform: uppercase;
         `;
-        previewLabel.textContent = '📝 PREVIEW DO COMPLEMENTO';
+        previewLabel.textContent = '📝 Preview';
         janela.appendChild(previewLabel);
 
         const previewBox = document.createElement('div');
         previewBox.id = 'osir-preview-complement';
         previewBox.style.cssText = `
-            background: #f3f4f6;
-            padding: 10px;
+            background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
+            padding: 8px;
             border-radius: 6px;
             font-family: 'Courier New', monospace;
-            font-size: 11px;
+            font-size: 10px;
             color: #1f2937;
-            min-height: 40px;
+            min-height: 30px;
             word-break: break-all;
-            max-height: 80px;
+            max-height: 60px;
             overflow-y: auto;
-            margin-bottom: 12px;
-            border: 1px solid #e5e7eb;
+            margin-bottom: 10px;
+            border: 1px solid #d1d5db;
+            font-weight: 500;
         `;
-        previewBox.textContent = 'Selecione um modelo e opções...';
+        previewBox.textContent = 'Selecione um modelo...';
         janela.appendChild(previewBox);
 
-        // BOTÕES
         const botoesContainer = document.createElement('div');
-        botoesContainer.style.cssText = 'display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap;';
+        botoesContainer.style.cssText = 'display: flex; gap: 4px; margin-bottom: 8px; flex-wrap: wrap;';
 
-        const btnAtualizar = document.createElement('button');
-        btnAtualizar.textContent = '🔄 Atualizar';
-        btnAtualizar.style.cssText = `
-            flex: 1;
-            padding: 8px 12px;
-            background: #8b5cf6;
-            color: white;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            font-weight: bold;
-            font-size: 13px;
-            transition: background 0.2s;
-            min-width: 80px;
-        `;
-        btnAtualizar.onmouseover = () => btnAtualizar.style.background = '#7c3aed';
-        btnAtualizar.onmouseout = () => btnAtualizar.style.background = '#8b5cf6';
-        btnAtualizar.onclick = atualizarComplemento;
+        const botoes = [
+            { id: 'btn-atualizar', label: '🔄', cor: '#8b5cf6', acao: atualizarComplemento },
+            { id: 'btn-buscar', label: '📥', cor: '#3b82f6', acao: buscarDados },
+            { id: 'btn-auto', label: '⚡', cor: '#dc2626', acao: gerarAutomatico },
+            { id: 'btn-limpar', label: '❌', cor: '#6b7280', acao: limparComplemento }
+        ];
 
-        const btnBuscar = document.createElement('button');
-        btnBuscar.textContent = '📥 Buscar Dados';
-        btnBuscar.style.cssText = `
-            flex: 1;
-            padding: 8px 12px;
-            background: #3b82f6;
-            color: white;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            font-weight: bold;
-            font-size: 13px;
-            transition: background 0.2s;
-            min-width: 80px;
-        `;
-        btnBuscar.onmouseover = () => btnBuscar.style.background = '#2563eb';
-        btnBuscar.onmouseout = () => btnBuscar.style.background = '#3b82f6';
-        btnBuscar.onclick = buscarDados;
+        botoes.forEach((btn) => {
+            const button = document.createElement('button');
+            button.textContent = btn.label;
+            button.style.cssText = `
+                flex: 1;
+                padding: 4px 6px;
+                background: linear-gradient(135deg, ${btn.cor} 0%, ${btn.cor}cc 100%);
+                color: white;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+                font-weight: 700;
+                font-size: 11px;
+                transition: all 0.2s ease;
+                min-width: 30px;
+                box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+            `;
+            button.onclick = btn.acao;
+            botoesContainer.appendChild(button);
+        });
 
-        const btnAutomatico = document.createElement('button');
-        btnAutomatico.textContent = '⚡ Automático';
-        btnAutomatico.style.cssText = `
-            flex: 1;
-            padding: 8px 12px;
-            background: #dc2626;
-            color: white;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            font-weight: bold;
-            font-size: 13px;
-            transition: background 0.2s;
-            min-width: 80px;
-        `;
-        btnAutomatico.onmouseover = () => btnAutomatico.style.background = '#b91c1c';
-        btnAutomatico.onmouseout = () => btnAutomatico.style.background = '#dc2626';
-        btnAutomatico.onclick = gerarAutomatico;
-
-        const btnLimpar = document.createElement('button');
-        btnLimpar.textContent = '❌ Limpar';
-        btnLimpar.style.cssText = `
-            flex: 1;
-            padding: 8px 12px;
-            background: #6b7280;
-            color: white;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            font-weight: bold;
-            font-size: 13px;
-            transition: background 0.2s;
-            min-width: 80px;
-        `;
-        btnLimpar.onmouseover = () => btnLimpar.style.background = '#4b5563';
-        btnLimpar.onmouseout = () => btnLimpar.style.background = '#6b7280';
-        btnLimpar.onclick = limparComplemento;
-
-        botoesContainer.appendChild(btnAtualizar);
-        botoesContainer.appendChild(btnBuscar);
-        botoesContainer.appendChild(btnAutomatico);
-        botoesContainer.appendChild(btnLimpar);
         janela.appendChild(botoesContainer);
 
-        // ATALHOS RÁPIDOS
         const atalhosLabel = document.createElement('div');
         atalhosLabel.style.cssText = `
-            font-weight: 600;
+            font-weight: 700;
             color: #4b5563;
-            margin: 6px 0 6px 0;
-            font-size: 12px;
+            margin: 4px 0 4px 0;
+            font-size: 9px;
+            text-transform: uppercase;
         `;
         atalhosLabel.textContent = '⚡ Atalhos:';
         janela.appendChild(atalhosLabel);
 
         const atalhosContainer = document.createElement('div');
-        atalhosContainer.style.cssText = 'display: flex; gap: 6px; flex-wrap: wrap;';
+        atalhosContainer.style.cssText = 'display: flex; gap: 4px; flex-wrap: wrap;';
 
         const atalhos = [
-            { id: 'atalho-wifi', label: 'WiFi Pro', acao: () => {
-                wifiProCheck.checked = !wifiProCheck.checked;
-                salvarEstadoWifiPro(wifiProCheck.checked);
-                atualizarPreviewConfig();
+            { label: 'WiFi', acao: () => {
+                const check = document.getElementById('osir-wifi-pro-check');
+                if (check) { check.checked = !check.checked; salvarEstadoWifiPro(check.checked); atualizarPreviewConfig(); }
             }},
-            { id: 'atalho-zte', label: 'ZTE', acao: () => {
-                zteCheck.checked = !zteCheck.checked;
-                atualizarPreviewConfig();
+            { label: 'ZTE', acao: () => {
+                const check = document.getElementById('osir-autentica-zte-check');
+                if (check) { check.checked = !check.checked; atualizarPreviewConfig(); }
             }},
-            { id: 'atalho-rb', label: 'RB', acao: () => {
-                rbCheck.checked = !rbCheck.checked;
-                atualizarPreviewConfig();
+            { label: 'RB', acao: () => {
+                const check = document.getElementById('osir-autentica-rb-check');
+                if (check) { check.checked = !check.checked; atualizarPreviewConfig(); }
             }},
-            { id: 'atalho-omada', label: 'OMADA', acao: () => {
-                omadaCheck.checked = !omadaCheck.checked;
-                atualizarPreviewConfig();
+            { label: 'OMADA', acao: () => {
+                const check = document.getElementById('osir-omada-check');
+                if (check) { check.checked = !check.checked; atualizarPreviewConfig(); }
             }}
         ];
 
@@ -1939,31 +1620,136 @@
             const btn = document.createElement('button');
             btn.textContent = atalho.label;
             btn.style.cssText = `
-                padding: 4px 12px;
+                padding: 3px 8px;
                 background: #e5e7eb;
-                border: none;
+                border: 1px solid #d1d5db;
                 border-radius: 4px;
                 cursor: pointer;
-                font-size: 12px;
+                font-size: 9px;
                 color: #374151;
-                transition: background 0.2s;
-                font-weight: 500;
+                transition: all 0.2s ease;
+                font-weight: 600;
             `;
-            btn.onmouseover = () => btn.style.background = '#d1d5db';
-            btn.onmouseout = () => btn.style.background = '#e5e7eb';
             btn.onclick = atalho.acao;
             atalhosContainer.appendChild(btn);
         });
 
         janela.appendChild(atalhosContainer);
 
-        // Insere a janela após o menu
         menuContainer.parentNode.insertBefore(janela, menuContainer.nextSibling);
-
         setTimeout(atualizarPreviewConfig, 100);
+    }
 
-        console.log('✅ Janela de Configuração (Esquerda) criada!');
-        console.log('🗑️ Botão vermelho removido!');
+    // =========================================================================
+    // JANELA FLUTUANTE DE CONTRATO SALVO - VERSÃO COMPACTA
+    // =========================================================================
+    function exibirJanelaContratoSalvo(contratoId, data) {
+        if (document.getElementById('osir-alerta-salvo')) return;
+
+        const dataFormatada = data.toLocaleString('pt-BR', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+
+        const alerta = document.createElement('div');
+        alerta.id = 'osir-alerta-salvo';
+        alerta.style.cssText = `
+            position: fixed;
+            bottom: 75px;
+            right: 15px;
+            width: 320px;
+            background: #ffffff;
+            border: 2px solid #10b981;
+            border-radius: 10px;
+            box-shadow: 0 8px 32px rgba(16, 185, 129, 0.25);
+            z-index: 99999;
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+            overflow: hidden;
+            animation: osirFadeIn 0.4s ease;
+        `;
+
+        const header = document.createElement('div');
+        header.style.cssText = `
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            padding: 8px 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        `;
+        header.innerHTML = `
+            <span style="color: white; font-weight: 700; font-size: 12px; display: flex; align-items: center; gap: 6px;">
+                <span style="font-size: 14px;">✅</span>
+                CONTRATO SALVO
+            </span>
+            <button onclick="this.closest('#osir-alerta-salvo').remove()" style="
+                background: rgba(255,255,255,0.2);
+                border: 1px solid rgba(255,255,255,0.3);
+                color: white;
+                padding: 2px 8px;
+                border-radius: 4px;
+                cursor: pointer;
+                font-weight: 700;
+                font-size: 13px;
+            ">✕</button>
+        `;
+        alerta.appendChild(header);
+
+        const body = document.createElement('div');
+        body.style.cssText = `
+            padding: 12px 14px 14px 14px;
+        `;
+        body.innerHTML = `
+            <div style="font-size: 12px; color: #1f2937; font-weight: 600;">
+                Contrato #${contratoId} salvo com sucesso!
+            </div>
+            <div style="font-size: 11px; color: #6b7280; margin-bottom: 10px;">
+                📅 ${dataFormatada}
+            </div>
+            <div style="display: flex; gap: 8px; justify-content: flex-end;">
+                <button onclick="this.closest('#osir-alerta-salvo').remove()" style="
+                    padding: 4px 16px;
+                    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+                    color: white;
+                    border: none;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    font-weight: 700;
+                    font-size: 11px;
+                    transition: all 0.2s ease;
+                    box-shadow: 0 2px 6px rgba(16,185,129,0.25);
+                " onmouseover="this.style.transform='scale(1.04)'" onmouseout="this.style.transform='scale(1)'">
+                    OK
+                </button>
+            </div>
+        `;
+        alerta.appendChild(body);
+
+        if (!document.getElementById('osir-animation-style')) {
+            const style = document.createElement('style');
+            style.id = 'osir-animation-style';
+            style.textContent = `
+                @keyframes osirFadeIn {
+                    from { transform: translateY(20px); opacity: 0; }
+                    to { transform: translateY(0); opacity: 1; }
+                }
+            `;
+            document.head.appendChild(style);
+        }
+
+        document.body.appendChild(alerta);
+
+        // Auto-fechar após 5 minutos
+        setTimeout(() => {
+            const el = document.getElementById('osir-alerta-salvo');
+            if (el) {
+                el.style.opacity = '0';
+                el.style.transform = 'translateY(20px)';
+                setTimeout(() => el.remove(), 400);
+            }
+        }, 300000);
     }
 
     // =========================================================================
@@ -2000,26 +1786,37 @@
             btnPreparar.textContent = '📥 Preparar Dados';
             btnPreparar.title = 'Preparar dados da fila para o contrato';
             btnPreparar.style.cssText = `
-                display: inline-block;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
                 padding: 4px 10px;
-                background-color: #8b5cf6;
+                background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
                 color: #ffffff;
-                border: none;
+                border: 1px solid #7c3aed;
                 border-radius: 4px;
                 cursor: pointer;
-                font-weight: bold;
-                font-size: 11px;
-                margin: 0 4px;
+                font-weight: 700;
+                font-size: 10px;
+                margin: 0 3px;
                 text-decoration: none;
                 text-align: center;
                 vertical-align: middle;
-                transition: background 0.2s;
+                transition: all 0.3s ease;
                 line-height: 1.4;
-                height: 28px;
-                min-width: 70px;
+                height: 24px;
+                min-width: 60px;
+                box-shadow: 0 2px 6px rgba(139,92,246,0.25);
             `;
-            btnPreparar.onmouseover = () => btnPreparar.style.backgroundColor = '#7c3aed';
-            btnPreparar.onmouseout = () => btnPreparar.style.backgroundColor = '#8b5cf6';
+            btnPreparar.onmouseover = () => {
+                btnPreparar.style.background = 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)';
+                btnPreparar.style.transform = 'translateY(-1px)';
+                btnPreparar.style.boxShadow = '0 4px 10px rgba(139,92,246,0.35)';
+            };
+            btnPreparar.onmouseout = () => {
+                btnPreparar.style.background = 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)';
+                btnPreparar.style.transform = 'translateY(0)';
+                btnPreparar.style.boxShadow = '0 2px 6px rgba(139,92,246,0.25)';
+            };
 
             btnPreparar.addEventListener('click', function(e) {
                 e.preventDefault();
@@ -2029,48 +1826,18 @@
                     const dados = capturarDadosDoProvisionamento();
                     dados.wifiPro = wifiProAtivo;
 
-                    console.log(`📶 SINAL capturado no botão: "${dados.sinal}"`);
-
                     const stringSecreta = montarStringOSIRDATA(dados);
-                    console.log('📋 String OSIRDATA gerada:', stringSecreta);
 
                     navigator.clipboard.writeText(stringSecreta).then(() => {
-                        const statusTelefonia = dados.telefonia.temTelefonia ? '📞' : '';
-                        const statusWifi = wifiProAtivo ? '📶' : '';
-                        const statusSinal = dados.sinal && dados.sinal !== "" ? '📡' : '';
-                        btnPreparar.textContent = `✅ ${statusTelefonia} ${statusWifi} ${statusSinal}`;
-                        btnPreparar.style.backgroundColor = '#10b981';
-
-                        const notificacao = document.createElement('div');
-                        notificacao.style.cssText = `
-                            position: fixed;
-                            bottom: 20px;
-                            right: 20px;
-                            background: #1f2937;
-                            color: white;
-                            padding: 10px 16px;
-                            border-radius: 8px;
-                            font-size: 11px;
-                            z-index: 99999;
-                            max-width: 350px;
-                            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-                            font-family: 'Segoe UI', Arial, sans-serif;
-                        `;
-                        notificacao.innerHTML = `
-                            <div style="font-weight: bold; margin-bottom: 3px;">✅ Dados preparados!</div>
-                            <div style="font-size: 10px; opacity: 0.8;">Contrato: ${dados.contrato || "Nenhum"}</div>
-                            ${dados.telefonia.temTelefonia ? '<div style="font-size: 10px; color: #34d399;">📞 Com Telefonia</div>' : ''}
-                            ${wifiProAtivo ? '<div style="font-size: 10px; color: #60a5fa;">📶 WiFi Pro</div>' : ''}
-                            ${dados.sinal && dados.sinal !== "" ? `<div style="font-size: 10px; color: #22c55e;">📡 Sinal: ${dados.sinal} dBm</div>` : ''}
-                            <div style="font-size: 9px; color: #6b7280; margin-top: 2px;">📋 Dados copiados para o clipboard</div>
-                        `;
-                        document.body.appendChild(notificacao);
+                        btnPreparar.textContent = '✅ OK';
+                        btnPreparar.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
+                        btnPreparar.style.boxShadow = '0 2px 6px rgba(16,185,129,0.25)';
 
                         setTimeout(() => {
-                            notificacao.remove();
                             btnPreparar.textContent = '📥 Preparar Dados';
-                            btnPreparar.style.backgroundColor = '#8b5cf6';
-                        }, 4000);
+                            btnPreparar.style.background = 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)';
+                            btnPreparar.style.boxShadow = '0 2px 6px rgba(139,92,246,0.25)';
+                        }, 2000);
                     });
                 } catch (err) {
                     console.error('Erro na captura:', err);
@@ -2091,23 +1858,10 @@
     if (window.location.href.includes(URL_CONTRATO_VOALLE) ||
         window.location.href.includes(URL_OPERACAO)) {
 
-        let tentativas = 0;
-        const maxTentativas = 10;
-        const intervaloInjecao = setInterval(() => {
-            tentativas++;
-            injetarBotaoComplementarManual();
-            if (document.getElementById('btn-osir-complementar-manual') || tentativas >= maxTentativas) {
-                clearInterval(intervaloInjecao);
-                console.log(`✅ Botão "Complementar (Manual)" injetado após ${tentativas} tentativas`);
-            }
-        }, 1500);
-
         setTimeout(verificarDadosEMostrarJanela, 2000);
         setTimeout(verificarDadosEMostrarJanela, 4000);
 
-        // =========================================================================
-        // INJEÇÃO DA NOVA JANELA DA ESQUERDA (RB + OMADA)
-        // =========================================================================
+        // INJEÇÃO DA JANELA DA ESQUERDA
         let tentativasJanelaEsquerda = 0;
         const maxTentativasJanelaEsquerda = 15;
         const intervaloInjecaoJanelaEsquerda = setInterval(() => {
@@ -2117,19 +1871,99 @@
             if (menuContainer && !document.getElementById('osir-config-complement-window')) {
                 criarJanelaConfiguracaoComplemento();
                 clearInterval(intervaloInjecaoJanelaEsquerda);
-                console.log(`✅ Janela de Configuração (Esquerda - RB + OMADA) criada após ${tentativasJanelaEsquerda} tentativas`);
             }
 
             if (tentativasJanelaEsquerda >= maxTentativasJanelaEsquerda) {
                 clearInterval(intervaloInjecaoJanelaEsquerda);
             }
         }, 1000);
+
+        // =========================================================================
+        // DETECÇÃO DE SALVAMENTO E EXIBIÇÃO DA JANELA FLUTUANTE
+        // =========================================================================
+        function obterIdContratoAtual() {
+            const menu = document.querySelector('.contract-menu');
+            if (menu) {
+                const id = menu.getAttribute('data-contractid');
+                if (id) return id;
+            }
+
+            const titulo = document.querySelector('.pagetitle h1');
+            if (titulo) {
+                const match = titulo.textContent.match(/Contrato\s*(\d+)/i);
+                if (match) return match[1];
+            }
+
+            const urlMatch = window.location.href.match(/contract[\/_]?(\d+)/i);
+            if (urlMatch) return urlMatch[1];
+
+            return null;
+        }
+
+        function marcarContratoComoSalvo() {
+            const contratoId = obterIdContratoAtual();
+            if (!contratoId) return;
+
+            const dados = {
+                salvoEm: new Date().toISOString(),
+                status: 'SALVO'
+            };
+
+            try {
+                localStorage.setItem(`osir_contrato_salvo_${contratoId}`, JSON.stringify(dados));
+                exibirJanelaContratoSalvo(contratoId, new Date());
+            } catch (e) {}
+        }
+
+        function iniciarMonitoramentoSalvamento() {
+            const observer = new MutationObserver(() => {
+                const growler = document.getElementById('neo-growler');
+                if (growler) {
+                    const isVisible = growler.dataset.visible === '1';
+                    const hasContent = growler.querySelector('#neo-growler-content .growl-box');
+
+                    if (isVisible && hasContent) {
+                        const mensagem = hasContent.textContent || '';
+                        if (mensagem.includes('salvo') || mensagem.includes('sucesso') || mensagem.includes('atualizado')) {
+                            marcarContratoComoSalvo();
+                        }
+                    }
+                }
+            });
+
+            observer.observe(document.body, {
+                childList: true,
+                subtree: true,
+                attributes: true,
+                attributeFilter: ['data-visible', 'style']
+            });
+        }
+
+        // Iniciar monitoramento
+        setTimeout(iniciarMonitoramentoSalvamento, 2000);
+
+        // Verificar marcação pendente ao carregar a página
+        setTimeout(() => {
+            const contratoId = obterIdContratoAtual();
+            if (contratoId) {
+                try {
+                    const dadosStr = localStorage.getItem(`osir_contrato_salvo_${contratoId}`);
+                    if (dadosStr) {
+                        const dados = JSON.parse(dadosStr);
+                        const dataSalvo = new Date(dados.salvoEm);
+                        const agora = new Date();
+                        const diffHoras = (agora - dataSalvo) / (1000 * 60 * 60);
+
+                        if (diffHoras < 24 && !document.getElementById('osir-alerta-salvo')) {
+                            exibirJanelaContratoSalvo(contratoId, dataSalvo);
+                        }
+                    }
+                } catch (e) {}
+            }
+        }, 3000);
     }
 
-    console.log('🚀 Osir Assistente v3.0.0 carregado!');
-    console.log('✅ POSIÇÃO CORRIGIDA: Telefonia nas posições 12-14!');
-    console.log('📞 TELEFONIA - Nº, Senha e IP extraídos corretamente');
-    console.log('📋 JANELA FLUTUANTE - Monta normalmente com telefonia');
-    console.log('📝 COMPLEMENTO - Gerado com todos os dados de telefonia');
-    console.log('✅ NOVA JANELA ESQUERDA - RB + OMADA adicionada!');
+    console.log('🚀 Osir Assistente v5.0.5 - VERSÃO COMPACTA carregado!');
+    console.log('📐 Todas as janelas com dimensões reduzidas');
+
 })();
