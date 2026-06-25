@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Osir - Assistente de Chamado
 // @namespace    http://tampermonkey.net/
-// @version      1.2.2
+// @version      1.2.3
 // @description  Alertas automáticos de planos, portabilidade, e auditor de estoque
 // @author       Alisson Guerreiro
 // @match        https://erp.osirnet.com.br/*
@@ -15,7 +15,7 @@
     // =========================================================================
     // VERSÃO E CONTROLE
     // =========================================================================
-    const SCRIPT_VERSION = '1.2.2';
+    const SCRIPT_VERSION = '1.2.3';
     console.log(`🚀 Osir Assistente de Chamado v${SCRIPT_VERSION} carregado!`);
 
     // =========================================================================
@@ -31,7 +31,7 @@
         "FITA ISOLANTE PRETA 20M X 19 MM", "BUCHA DE PAREDE 8MM", "PARAFUSO PHILIPS 4,0 X 40",
         "CABO LAN BRANCO", "ALINHADOR OPTICO APC SIMPLEX", "PROTETOR DE EMENDA", "SUPA 3",
         "FITA DE ACO INOX 430 LAMINADO A FRIO LISA 3/4 - 05 MM X 25MTS", "PF CHIP RT CB CH PH BC 3,5X25MM",
-        "BUCHA FIXACAO 6MM", "PARAFUSO 10 x 55 mm", "ARAME DE ESPINAR ISOLADO METALICO FEI125V 105M", "FITA ISOLANTE PRETA 19MM X 10M", "BUCHA DE PAREDE 10mm"
+        "BUCHA FIXACAO 6MM", "PARAFUSO 10 x 55 mm", "ARAME DE ESPINAR ISOLADO METALICO FEI125V 105M", "FITA ISOLANTE PRETA 19MM X 10M", "BUCHA DE PAREDE 10mm", "ABRACADEIRA DE FIXACAO 28CM X 4,80MM - PRETA"
     ];
 
     const FERRAMENTAS_PROIBIDAS = [
