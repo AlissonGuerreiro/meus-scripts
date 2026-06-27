@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Osir - Assistente de Provisionamento
 // @namespace    http://tampermonkey.net/
-// @version      5.1.0
-// @description  CORRIGIDO: Ordem do complemento + Janela arrastável com posição salva + WiFi Pro + Telefonia - VERSÃO COMPACTA
+// @version      5.2.3
+// @description  CORRIGIDO: VLAN 2200 + Botão 📋 Copiar PE+Slot+Porta + Remoção Complementar + Preparar Dados no lugar do Chamado
 // @author       Alisson Guerreiro
 // @match        *://*.osirnet.com.br/*
 // @match        *://*.osir.net.br/*
@@ -19,15 +19,15 @@
     const URL_OPERACAO = "/legacy/operations/";
 
     // =========================================================================
-    // CONFIGURAÇÕES DA JANELA FLUTUANTE (VERSÃO COMPACTA)
+    // CONFIGURAÇÕES DA JANELA FLUTUANTE
     // =========================================================================
     const CONFIG_JANELA = {
         larguraMin: 250,
         larguraMax: 500,
-        larguraPadrao: 320,
+        larguraPadrao: 350,
         alturaMin: 250,
         alturaMax: 600,
-        alturaPadrao: 400,
+        alturaPadrao: 550,
         fonteMin: 9,
         fonteMax: 16,
         fontePadrao: 11,
@@ -105,7 +105,7 @@
     carregarPreferencias();
 
     // =========================================================================
-    // FUNÇÃO PARA TORNAR A JANELA ARRASTÁVEL COM POSIÇÃO SALVA
+    // FUNÇÃO PARA TORNAR A JANELA ARRASTÁVEL
     // =========================================================================
     function tornarJanelaArrastavel(janela) {
         let isDragging = false;
@@ -116,13 +116,11 @@
         let xOffset = 0;
         let yOffset = 0;
 
-        // Pega a posição salva no localStorage
         try {
             const posicaoSalva = localStorage.getItem('osir_janela_posicao');
             if (posicaoSalva) {
                 const pos = JSON.parse(posicaoSalva);
                 if (pos.x !== undefined && pos.y !== undefined) {
-                    // Garante que não fica fora da tela
                     const maxX = window.innerWidth - 320 - 10;
                     const maxY = window.innerHeight - 400 - 10;
                     const x = Math.max(10, Math.min(pos.x, maxX));
@@ -141,7 +139,6 @@
         } catch (e) {}
 
         function dragStart(e) {
-            // Não arrasta se clicou em botões ou elementos com classe 'osir-no-drag'
             if (e.target.closest('.osir-no-drag')) return;
 
             const touch = e.type === 'touchstart' ? e.touches[0] : e;
@@ -163,7 +160,6 @@
                 janela.style.transition = 'width 0.3s ease, max-height 0.3s ease, box-shadow 0.3s ease';
                 janela.style.boxShadow = '0 8px 32px rgba(0,0,0,0.35)';
 
-                // Salva posição no localStorage
                 try {
                     localStorage.setItem('osir_janela_posicao', JSON.stringify({
                         x: xOffset,
@@ -184,7 +180,6 @@
             xOffset = currentX;
             yOffset = currentY;
 
-            // Mantém dentro da tela
             const rect = janela.getBoundingClientRect();
             const maxX = window.innerWidth - rect.width - 10;
             const maxY = window.innerHeight - rect.height - 10;
@@ -198,17 +193,14 @@
             janela.style.bottom = 'auto';
         }
 
-        // Eventos de mouse
         janela.addEventListener('mousedown', dragStart);
         document.addEventListener('mousemove', drag);
         document.addEventListener('mouseup', dragEnd);
 
-        // Eventos de toque (mobile)
         janela.addEventListener('touchstart', dragStart, { passive: true });
         document.addEventListener('touchmove', drag, { passive: false });
         document.addEventListener('touchend', dragEnd);
 
-        // Ajusta posição ao redimensionar a janela
         window.addEventListener('resize', () => {
             const rect = janela.getBoundingClientRect();
             const maxX = window.innerWidth - rect.width - 10;
@@ -231,7 +223,6 @@
             }
         });
 
-        // Função para resetar posição (chamada pelo botão)
         janela.resetPosition = function() {
             try {
                 localStorage.removeItem('osir_janela_posicao');
@@ -309,12 +300,14 @@
     }
 
     // =========================================================================
-    // CÁLCULO VLAN
+    // CÁLCULO VLAN (CORRIGIDO)
     // =========================================================================
     function calcularVlanOsir(pontoAcesso, slotStr, portaStr) {
         const pa = (pontoAcesso || "").toUpperCase();
 
-        if (pa.includes("STL_CE3_R") || pa.includes("STL_CE4_R") || pa.includes("TTN_LAN") || pa.includes("GAR")) {
+        if (pa.includes("STL_CE3_R") || pa.includes("STL_CE4_R") ||
+            pa.includes("STL_CE_3") || pa.includes("STL_CE_4") ||
+            pa.includes("TTN_LAN") || pa.includes("GAR")) {
             return "2200";
         }
 
@@ -385,6 +378,36 @@
         if (serialUpper.startsWith("RCMG")) return false;
         if (serialUpper.startsWith("5A544") || serialUpper.startsWith("ZTEGD")) return true;
         return false;
+    }
+
+    // =========================================================================
+    // FORMATAR PE + SLOT + PORTA
+    // =========================================================================
+    function formatarPESlotPorta(dados) {
+        let pe = dados.pontoAcesso || dados.olt || '';
+
+        if (pe.includes(' - ')) {
+            const partes = pe.split(' - ');
+            pe = partes[partes.length - 1].trim();
+        }
+
+        if (pe.includes('STL_CE_')) {
+            pe = pe.replace('STL_', '').replace('_', ' ');
+        }
+        else if (pe.includes('JUN_')) {
+            pe = pe.replace('_', ' ');
+        }
+        else if (pe.includes('_')) {
+            pe = pe.replace('_', ' ');
+        }
+
+        let slot = dados.slot || '0';
+        let porta = dados.porta || '0';
+
+        slot = String(slot).padStart(2, '0');
+        porta = String(porta).padStart(2, '0');
+
+        return `${pe} ${slot} ${porta}`;
     }
 
     // =========================================================================
@@ -501,12 +524,10 @@
     function montarComplemento(dados) {
         let partes = [];
 
-        // 1. WiFi Pro (primeiro se ativo)
         if (wifiProAtivo) {
             partes.push("Cliente Wifi Pro");
         }
 
-        // 2. Tipo de equipamento
         const tipoEquip = determinarTipoEquipamento(dados.tipoProvisionamento, dados.serial);
         const temTelefonia = dados.telefonia &&
                              dados.telefonia.temTelefonia === true &&
@@ -519,15 +540,12 @@
         }
         partes.push(equipamento);
 
-        // 3. Serial
         partes.push(`SN: ${dados.serial}`);
 
-        // 4. Autenticações
         if (precisaAutenticacao(dados.tipoProvisionamento, dados.serial)) {
             partes.push("Autentica na ZTE");
         }
 
-        // 5. Splitter - Porta
         const splitterDoFormulario = document.getElementById('AuthenticationSplitterPortTitle')?.value?.trim() || "";
         const portaSplitterDoFormulario = document.getElementById('AuthenticationSplitterPortPort')?.value?.trim() || "";
 
@@ -540,10 +558,8 @@
             partes.push(`XX - Porta XX`);
         }
 
-        // 6. Slot OLT: X Porta OLT: X ID: X
         partes.push(`Slot OLT: ${dados.slot} Porta OLT: ${dados.porta} ID: ${dados.id}`);
 
-        // 7. SSID - Senha
         if (dados.ssid !== "XX" && dados.senha !== "XX") {
             partes.push(`SSID: ${dados.ssid} - Senha: ${dados.senha}`);
         } else if (dados.ssid !== "XX") {
@@ -552,7 +568,6 @@
             partes.push(`Senha: ${dados.senha}`);
         }
 
-        // 8. Telefonia (se houver)
         if (temTelefonia) {
             if (dados.telefonia.numero && dados.telefonia.numero.trim() !== '') {
                 partes.push(`Nº: ${dados.telefonia.numero}`);
@@ -629,7 +644,7 @@
     }
 
     // =========================================================================
-    // JANELA FLUTUANTE (DIREITA) - VERSÃO COMPACTA COM ARRASTAR E POSIÇÃO SALVA
+    // JANELA FLUTUANTE (DIREITA)
     // =========================================================================
     function criarJanelaFlutuante(dados) {
         const contratoParaExibir = dados.contrato || "???";
@@ -668,7 +683,7 @@
             user-select: none;
         `;
 
-        // CABEÇALHO - Com classe para drag
+        // CABEÇALHO
         const header = document.createElement('div');
         header.className = 'osir-header-drag';
         header.style.cssText = `
@@ -686,7 +701,6 @@
             cursor: grab;
             user-select: none;
         `;
-        header.title = 'Arraste para mover';
 
         const titulo = document.createElement('span');
         titulo.textContent = `📋 Contrato #${contratoParaExibir}`;
@@ -787,7 +801,6 @@
             redimensionarJanela(0, 0, 0);
             salvarPreferencias();
 
-            // Resetar posição
             if (janela.resetPosition) {
                 janela.resetPosition();
             }
@@ -920,78 +933,144 @@
         conteudo.appendChild(wifiProContainer);
 
         // CAMPOS
-        const campos = [];
-
-        if (dados.nomeOLT && dados.nomeOLT !== "" && dados.nomeOLT !== "N/A") {
-            campos.push({ label: '📍 PE', valor: dados.nomeOLT });
-        } else if (dados.olt && dados.olt !== "" && dados.olt !== "N/A") {
-            campos.push({ label: '📍 PE', valor: dados.olt });
-        }
-
-        campos.push(
-            { label: '📊 Slot', valor: dados.slot || 'XX' },
-            { label: '🔌 Porta', valor: dados.porta || 'XX' },
-            { label: '🆔 ID', valor: dados.id || 'XX' },
-            { label: '🔌 Serial', valor: dados.serial || 'XX' },
-            { label: '📡 SSID', valor: dados.ssid || 'XX' },
-            { label: '🔑 Senha', valor: dados.senha || 'XX' }
-        );
-
-        if (temTelefonia) {
-            campos.push(
-                { label: '📞 Tel', valor: dados.telefonia.numero || 'N/A' }
-            );
-            if (dados.telefonia.senha && dados.telefonia.senha.trim() !== '') {
-                campos.push({ label: '🔑 Senha Tel', valor: dados.telefonia.senha });
-            }
-            if (dados.telefonia.ip && dados.telefonia.ip.trim() !== '') {
-                campos.push({ label: '🌐 IP Tel', valor: dados.telefonia.ip });
-            }
-        }
-
-        campos.forEach((campo) => {
+        function criarLinhaCampo(labelText, valorText, comBotaoCopiar = false) {
             const linha = document.createElement('div');
             linha.style.cssText = `
                 display: flex;
                 justify-content: space-between;
+                align-items: center;
                 padding: 4px 6px;
                 border-bottom: 1px solid #f3f4f6;
                 font-size: ${estadoJanela.fonte}px;
-                align-items: center;
                 gap: 4px;
                 border-radius: 3px;
             `;
 
             const labelCampo = document.createElement('span');
-            labelCampo.textContent = campo.label;
+            labelCampo.textContent = labelText;
             labelCampo.style.cssText = `
                 font-weight: 700;
                 color: #4b5563;
                 font-size: ${estadoJanela.fonte}px;
                 min-width: 60px;
+                flex-shrink: 0;
             `;
 
-            const valor = document.createElement('span');
-            valor.textContent = campo.valor;
-            valor.style.cssText = `
+            const valorSpan = document.createElement('span');
+            valorSpan.textContent = valorText;
+            valorSpan.style.cssText = `
                 color: #1f2937;
                 font-family: 'Courier New', monospace;
                 background: #f9fafb;
                 padding: 2px 6px;
                 border-radius: 3px;
-                max-width: ${Math.round(estadoJanela.largura * 0.45)}px;
                 overflow: hidden;
                 text-overflow: ellipsis;
                 white-space: nowrap;
                 font-size: ${Math.round(estadoJanela.fonte * 0.9)}px;
                 font-weight: 600;
                 border: 1px solid #e5e7eb;
+                flex: 1;
+                min-width: 0;
             `;
 
+            if (!comBotaoCopiar) {
+                linha.appendChild(labelCampo);
+                linha.appendChild(valorSpan);
+                return linha;
+            }
+
+            const container = document.createElement('div');
+            container.style.cssText = `
+                display: flex;
+                align-items: center;
+                gap: 4px;
+                flex: 1;
+                min-width: 0;
+            `;
+
+            valorSpan.style.flex = '1';
+            valorSpan.style.minWidth = '0';
+            container.appendChild(valorSpan);
+
+            const btnCopiar = document.createElement('button');
+            btnCopiar.textContent = '📋';
+            btnCopiar.title = 'Copiar PE+Slot+Porta';
+            btnCopiar.style.cssText = `
+                background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+                color: white;
+                border: 1px solid #7c3aed;
+                border-radius: 4px;
+                padding: 2px 6px;
+                cursor: pointer;
+                font-size: ${Math.round(estadoJanela.fonte * 0.8)}px;
+                transition: all 0.2s ease;
+                flex-shrink: 0;
+                line-height: 1.2;
+                box-shadow: 0 1px 3px rgba(139,92,246,0.2);
+            `;
+            btnCopiar.onmouseover = () => {
+                btnCopiar.style.transform = 'scale(1.1)';
+            };
+            btnCopiar.onmouseout = () => {
+                btnCopiar.style.transform = 'scale(1)';
+            };
+
+            btnCopiar.onclick = function() {
+                const textoParaCopiar = formatarPESlotPorta(dados);
+                navigator.clipboard.writeText(textoParaCopiar).then(() => {
+                    this.textContent = '✅';
+                    this.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
+                    this.style.borderColor = '#059669';
+                    setTimeout(() => {
+                        this.textContent = '📋';
+                        this.style.background = 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)';
+                        this.style.borderColor = '#7c3aed';
+                    }, 1500);
+                }).catch(() => {
+                    this.textContent = '❌';
+                    setTimeout(() => {
+                        this.textContent = '📋';
+                    }, 1500);
+                });
+            };
+
+            container.appendChild(valorSpan);
+            container.appendChild(btnCopiar);
             linha.appendChild(labelCampo);
-            linha.appendChild(valor);
-            conteudo.appendChild(linha);
+            linha.appendChild(container);
+            return linha;
+        }
+
+        let peExibicao = dados.nomeOLT || dados.olt || "N/A";
+        if (peExibicao === "N/A" && dados.pontoAcesso) {
+            peExibicao = dados.pontoAcesso;
+        }
+
+        conteudo.appendChild(criarLinhaCampo('📍 PE', peExibicao, true));
+
+        const camposSimples = [
+            { label: '📊 Slot', valor: dados.slot || 'XX' },
+            { label: '🔌 Porta', valor: dados.porta || 'XX' },
+            { label: '🆔 ID', valor: dados.id || 'XX' },
+            { label: '🔌 Serial', valor: dados.serial || 'XX' },
+            { label: '📡 SSID', valor: dados.ssid || 'XX' },
+            { label: '🔑 Senha', valor: dados.senha || 'XX' }
+        ];
+
+        camposSimples.forEach((campo) => {
+            conteudo.appendChild(criarLinhaCampo(campo.label, campo.valor, false));
         });
+
+        if (temTelefonia) {
+            conteudo.appendChild(criarLinhaCampo('📞 Tel', dados.telefonia.numero || 'N/A', false));
+            if (dados.telefonia.senha && dados.telefonia.senha.trim() !== '') {
+                conteudo.appendChild(criarLinhaCampo('🔑 Senha Tel', dados.telefonia.senha, false));
+            }
+            if (dados.telefonia.ip && dados.telefonia.ip.trim() !== '') {
+                conteudo.appendChild(criarLinhaCampo('🌐 IP Tel', dados.telefonia.ip, false));
+            }
+        }
 
         // COMPLEMENTO
         const previewLabel = document.createElement('div');
@@ -1120,7 +1199,6 @@
         janela.appendChild(conteudo);
         document.body.appendChild(janela);
 
-        // Torna a janela arrastável com posição salva
         tornarJanelaArrastavel(janela);
     }
 
@@ -1161,7 +1239,7 @@
     }
 
     // =========================================================================
-    // JANELA DA ESQUERDA (CONFIGURAÇÃO) - VERSÃO COMPACTA
+    // JANELA DA ESQUERDA (CONFIGURAÇÃO)
     // =========================================================================
     function getModeloLabel() {
         const selected = document.querySelector('input[name="modelo-equipamento"]:checked');
@@ -1206,23 +1284,18 @@
 
         let partes = [];
 
-        // 1. WiFi Pro (primeiro se ativo)
         if (wifiPro) partes.push('Cliente Wifi Pro');
 
-        // 2. Tipo de equipamento
         partes.push(modelo);
 
-        // 3. Serial
         if (serialForm && serialForm !== 'XX' && serialForm !== '') {
             partes.push(`SN: ${serialForm}`);
         }
 
-        // 4. Autenticações
         if (autenticaZTE) partes.push('Autentica na ZTE');
         if (autenticaRB) partes.push('Autentica em uma RB');
         if (omada) partes.push('EAPs configurados no OMADA');
 
-        // 5. Splitter - Porta
         const splitterForm = document.getElementById('AuthenticationSplitterPortTitle')?.value?.trim() || '';
         const portaSplitterForm = document.getElementById('AuthenticationSplitterPortPort')?.value?.trim() || '';
 
@@ -1235,7 +1308,6 @@
             partes.push('XX - Porta XX');
         }
 
-        // 6. Slot OLT: X Porta OLT: X ID: X
         const slotForm = document.getElementById('AuthenticationContractSlotOlt')?.value?.trim() || '';
         const portaForm = document.getElementById('AuthenticationContractPortOlt')?.value?.trim() || '';
         const idForm = document.getElementById('AuthenticationContractOltId')?.value?.trim() || '';
@@ -1245,7 +1317,6 @@
             partes.push(`Slot OLT: ${slotForm} Porta OLT: ${portaFormatada} ID: ${idForm}`);
         }
 
-        // 7. SSID - Senha
         if (ssidForm && ssidForm !== '') {
             if (senhaForm && senhaForm !== '') {
                 partes.push(`SSID: ${ssidForm} Senha: ${senhaForm}`);
@@ -1346,21 +1417,16 @@
 
         let partes = [];
 
-        // 1. WiFi Pro
         if (wifiPro) partes.push('Cliente Wifi Pro');
 
-        // 2. Modelo
         partes.push(modeloAutomatico);
 
-        // 3. Serial
         if (serial && serial !== 'XX' && serial !== '') {
             partes.push(`SN: ${serial}`);
         }
 
-        // 4. Autenticações
         if (precisaZTE) partes.push('Autentica na ZTE');
 
-        // 5. Splitter - Porta
         if (splitterForm && splitterForm !== '') {
             const portaSplitter = portaSplitterForm && portaSplitterForm !== ''
                 ? portaSplitterForm.padStart(2, '0')
@@ -1370,13 +1436,11 @@
             partes.push('XX - Porta XX');
         }
 
-        // 6. Slot OLT: X Porta OLT: X ID: X
         if (slotForm && portaForm && idForm) {
             const portaFormatada = portaForm.padStart(2, '0');
             partes.push(`Slot OLT: ${slotForm} Porta OLT: ${portaFormatada} ID: ${idForm}`);
         }
 
-        // 7. SSID - Senha
         if (ssidForm && ssidForm !== '') {
             if (senhaForm && senhaForm !== '') {
                 partes.push(`SSID: ${ssidForm} Senha: ${senhaForm}`);
@@ -1807,7 +1871,7 @@
     }
 
     // =========================================================================
-    // JANELA FLUTUANTE DE CONTRATO SALVO - VERSÃO COMPACTA
+    // JANELA FLUTUANTE DE CONTRATO SALVO
     // =========================================================================
     function exibirJanelaContratoSalvo(contratoId, data) {
         if (document.getElementById('osir-alerta-salvo')) return;
@@ -1918,14 +1982,33 @@
     }
 
     // =========================================================================
-    // INJEÇÃO DO BOTÃO NA FILA DE PROVISIONAMENTO
+    // FILA DE PROVISIONAMENTO - INJEÇÃO DO BOTÃO E REMOÇÃO DO COMPLEMENTAR
     // =========================================================================
     if (window.location.href.includes(URL_ATENDIMENTO)) {
+
+        // Função para remover o botão Complementar
+        function removerBotaoComplementar() {
+            const botoes = document.querySelectorAll('button');
+            for (let btn of botoes) {
+                const texto = btn.textContent?.trim() || '';
+
+                if (texto === 'Complementar') {
+                    btn.remove();
+                    console.log('✅ Botão Complementar removido');
+                    return true;
+                }
+            }
+            return false;
+        }
+
         function injetarBotaoDinamico() {
+            // Remove o Complementar primeiro
+            removerBotaoComplementar();
+
             if (document.getElementById('btn-copiar-osir-nativo')) return;
 
+            // Procura o botão Chamado para substituir
             let btnChamado = null;
-            let btnConexao = null;
             const todosBotoes = document.querySelectorAll('button, input[type="button"], a, .btn, [role="button"]');
 
             for (let btn of todosBotoes) {
@@ -1933,18 +2016,18 @@
                 const id = btn.id || '';
                 const href = btn.href || '';
 
-                if (texto === "Chamado" || id === "linkChamado" || href.includes('new_solicitations')) {
+                if (texto === "Chamado" || id === "linkChamado" || href?.includes('new_solicitations')) {
                     btnChamado = btn;
                     break;
                 }
-                if (texto === "Conexão" || texto === "Conexao") {
-                    btnConexao = btn;
-                }
             }
 
-            const referencia = btnChamado || btnConexao;
-            if (!referencia) return;
+            if (!btnChamado) {
+                console.log('⚠️ Botão Chamado não encontrado');
+                return;
+            }
 
+            // Cria o botão Preparar Dados
             const btnPreparar = document.createElement('a');
             btnPreparar.id = 'btn-copiar-osir-nativo';
             btnPreparar.type = 'button';
@@ -1968,7 +2051,7 @@
                 vertical-align: middle;
                 transition: all 0.3s ease;
                 line-height: 1.4;
-                height: 24px;
+                height: 31px;
                 min-width: 60px;
                 box-shadow: 0 2px 6px rgba(139,92,246,0.25);
             `;
@@ -2009,7 +2092,9 @@
                 }
             });
 
-            referencia.parentNode.replaceChild(btnPreparar, referencia);
+            // Substitui o botão Chamado pelo Preparar Dados
+            btnChamado.parentNode.replaceChild(btnPreparar, btnChamado);
+            console.log('✅ Botão Preparar Dados substituiu o Chamado');
         }
 
         setInterval(injetarBotaoDinamico, 800);
@@ -2042,9 +2127,7 @@
             }
         }, 1000);
 
-        // =========================================================================
-        // DETECÇÃO DE SALVAMENTO E EXIBIÇÃO DA JANELA FLUTUANTE
-        // =========================================================================
+        // DETECÇÃO DE SALVAMENTO
         function obterIdContratoAtual() {
             const menu = document.querySelector('.contract-menu');
             if (menu) {
@@ -2125,8 +2208,10 @@
         }, 3000);
     }
 
-    console.log('🚀 Osir Assistente v5.1.0 - VERSÃO COMPACTA carregado!');
-    console.log('📐 Janela arrastável com posição salva + ordem do complemento corrigida');
-    console.log('💾 Posição da janela é salva automaticamente!');
+    console.log('🚀 Osir Assistente v5.2.3');
+    console.log('✅ VLAN 2200 para STL_CE_3 e STL_CE_4');
+    console.log('✅ Botão 📋 para copiar PE+Slot+Porta');
+    console.log('✅ Botão Complementar removido');
+    console.log('✅ Botão Preparar Dados substituiu o Chamado');
 
 })();
