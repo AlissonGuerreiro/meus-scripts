@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Osir - Assistente de Provisionamento
 // @namespace    http://tampermonkey.net/
-// @version      5.2.3
-// @description  CORRIGIDO: VLAN 2200 + Botão 📋 Copiar PE+Slot+Porta + Remoção Complementar + Preparar Dados no lugar do Chamado
+// @version      5.2.4
+// @description  CORRIGIDO: VLAN 2200 (STL_CE_3/4, TTN_LAN, GAR, ROS) + Normalização STLDC→DC, PTN_NOVA→PTN + Botão 📋 Copiar PE+Slot+Porta + Remoção Complementar + Preparar Dados no lugar do Chamado
 // @author       Alisson Guerreiro
 // @match        *://*.osirnet.com.br/*
 // @match        *://*.osir.net.br/*
@@ -303,14 +303,32 @@
     // CÁLCULO VLAN (CORRIGIDO)
     // =========================================================================
     function calcularVlanOsir(pontoAcesso, slotStr, portaStr) {
-        const pa = (pontoAcesso || "").toUpperCase();
+        let pa = (pontoAcesso || "").toUpperCase();
 
+        // ============================================================
+        // NORMALIZAÇÃO DOS NOMES DOS PONTOS DE ACESSO
+        // ============================================================
+        // STLDC 01 -> DC 1
+        pa = pa.replace(/STLDC\s*0?1/, "DC 1");
+        // STLDC 02 -> DC 2
+        pa = pa.replace(/STLDC\s*0?2/, "DC 2");
+        // PTN_NOVA -> PTN
+        pa = pa.replace(/PTN[_\s]*NOVA/, "PTN");
+
+        // ============================================================
+        // PEs QUE USAM VLAN 2200
+        // ============================================================
         if (pa.includes("STL_CE3_R") || pa.includes("STL_CE4_R") ||
             pa.includes("STL_CE_3") || pa.includes("STL_CE_4") ||
-            pa.includes("TTN_LAN") || pa.includes("GAR")) {
+            pa.includes("TTN_LAN") || 
+            pa.includes("GAR") ||    // Garibaldi
+            pa.includes("ROS")) {    // Rosário do Sul
             return "2200";
         }
 
+        // ============================================================
+        // TODOS OS DEMAIS: cálculo padrão (slot + porta)
+        // ============================================================
         const slotTrim = (slotStr || "").trim();
         const portaTrim = (portaStr || "").trim();
 
@@ -386,11 +404,13 @@
     function formatarPESlotPorta(dados) {
         let pe = dados.pontoAcesso || dados.olt || '';
 
+        // Extrai o nome do PE se estiver no formato "REG XX - CIDADE - PE"
         if (pe.includes(' - ')) {
             const partes = pe.split(' - ');
             pe = partes[partes.length - 1].trim();
         }
 
+        // Normalizações para exibição
         if (pe.includes('STL_CE_')) {
             pe = pe.replace('STL_', '').replace('_', ' ');
         }
@@ -400,6 +420,13 @@
         else if (pe.includes('_')) {
             pe = pe.replace('_', ' ');
         }
+
+        // STLDC 01 -> DC 1
+        pe = pe.replace(/STLDC\s*0?1/, 'DC 1');
+        // STLDC 02 -> DC 2
+        pe = pe.replace(/STLDC\s*0?2/, 'DC 2');
+        // PTN_NOVA -> PTN
+        pe = pe.replace(/PTN[_\s]*NOVA/, 'PTN');
 
         let slot = dados.slot || '0';
         let porta = dados.porta || '0';
@@ -505,15 +532,16 @@
             if (match) dados.contrato = match[1].trim();
         }
 
-        dados.vlan = calcularVlanOsir(dados.olt, dados.slot, dados.porta);
-        dados.portaWeb = definirPortaWeb(dados.tipoProvisionamento);
-
+        // Extrai o pontoAcesso do nomeOLT
         if (dados.nomeOLT) {
             const partes = dados.nomeOLT.split(' - ');
             if (partes.length >= 3) {
                 dados.pontoAcesso = partes[partes.length - 1].trim();
             }
         }
+
+        dados.vlan = calcularVlanOsir(dados.pontoAcesso, dados.slot, dados.porta);
+        dados.portaWeb = definirPortaWeb(dados.tipoProvisionamento);
 
         return dados;
     }
@@ -2208,8 +2236,9 @@
         }, 3000);
     }
 
-    console.log('🚀 Osir Assistente v5.2.3');
-    console.log('✅ VLAN 2200 para STL_CE_3 e STL_CE_4');
+    console.log('🚀 Osir Assistente v5.2.4');
+    console.log('✅ VLAN 2200 para STL_CE_3/4, TTN_LAN, GAR, ROS');
+    console.log('✅ Normalização: STLDC 01→DC 1, STLDC 02→DC 2, PTN_NOVA→PTN');
     console.log('✅ Botão 📋 para copiar PE+Slot+Porta');
     console.log('✅ Botão Complementar removido');
     console.log('✅ Botão Preparar Dados substituiu o Chamado');
