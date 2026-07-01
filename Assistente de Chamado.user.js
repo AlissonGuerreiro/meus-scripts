@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Osir - Assistente de Chamado
 // @namespace    http://tampermonkey.net/
-// @version      1.2.3
-// @description  Alertas automáticos de planos, portabilidade, e auditor de estoque
+// @version      1.2.6
+// @description  Alertas automáticos de planos e auditor de estoque
 // @author       Alisson Guerreiro
 // @match        https://erp.osirnet.com.br/*
 // @grant        none
@@ -15,7 +15,7 @@
     // =========================================================================
     // VERSÃO E CONTROLE
     // =========================================================================
-    const SCRIPT_VERSION = '1.2.3';
+    const SCRIPT_VERSION = '1.2.6';
     console.log(`🚀 Osir Assistente de Chamado v${SCRIPT_VERSION} carregado!`);
 
     // =========================================================================
@@ -112,7 +112,7 @@
     }
 
     // =========================================================================
-    // MÓDULO 1: NOTIFICADOR DE PLANOS (CORRIGIDO)
+    // MÓDULO 1: NOTIFICADOR DE PLANOS
     // =========================================================================
     let ultimaCategoria = null;
     let ultimoTextoOS = "";
@@ -139,8 +139,9 @@
                         txt.includes("troca de endereco") ||
                         txt.includes("custo r 80 00") ||
                         txt.includes("portabilidade") ||
-                        txt.includes("parcelamento") ||
                         txt.includes("wifi pro") ||
+                        txt.includes("wifi enterprise") ||
+                        txt.includes("ip fixo") ||
                         txt.includes("osir fone") ||
                         txt.includes("osir movel")) {
                         if (!div.classList.contains('ql-editor') && !div.classList.contains('dx-htmleditor-content')) {
@@ -170,27 +171,19 @@
             let txtNorm = normalizarTexto(textoOSOriginal).replace(/https?:\/\/\S+/gi, "").replace(/\S+@\S+\.\S+/gi, "");
 
             // =============================================================
-            // TROCA DE ENDEREÇO - R$ 80,00
+            // ⭐ TROCA DE ENDEREÇO
             // =============================================================
             if (categoryAtual.toLowerCase().includes("troca") && categoryAtual.toLowerCase().includes("ender")) {
-                if (/custo[\s\S]*?80\s*00[\s\S]*?\([\s]*x[\s]*\)\s*sim/.test(txtNorm)) {
+                const temCusto80 = /custo[\s\S]*?80\s*00/.test(txtNorm);
+                const temSimMarcado = /\([\s]*x[\s]*\)\s*sim|sim\s*\([\s]*x[\s]*\)/.test(txtNorm);
+
+                if (temCusto80 && temSimMarcado) {
                     alertContainer.appendChild(criarCardAlerta(
                         "ENVIAR PARA SAC N2 FAZER A COBRANÇA DE R$ 80,00!",
                         "#ffebee", "#c62828", "#d32f2f", "⚠️"
                     ));
                 }
                 return;
-            }
-
-            // =============================================================
-            // PARCELAMENTO 2x
-            // =============================================================
-            const temParcelamento2x = /parcelamento\s*2x|parcelado\s*2x|2x\s*parcelado|2\s*x\s*parcelamento/i.test(txtNorm);
-            if (temParcelamento2x) {
-                alertContainer.appendChild(criarCardAlerta(
-                    "PARCELAMENTO 2x: VERIFICAR COM O CLIENTE!",
-                    "#fff3e0", "#e65100", "#ff9800", "💳"
-                ));
             }
 
             // =============================================================
@@ -210,7 +203,6 @@
             }
 
             if (!textoParaAnalise.trim()) {
-                console.log('📭 Nenhum texto para analisar.');
                 return;
             }
 
@@ -220,16 +212,16 @@
                 osirFone: false,
                 osirMovel: false,
                 wifiPro: false,
-                portabilidade: false,
-                migracao: false,
-                mudancaPlano: false
+                wifiEnterprise: false,
+                ipFixo: false,
+                portabilidade: false
             };
 
             // ✅ OsirFone - 📞
             const temOsirFone = /OsirFone|osirfone|Osir Fone|osir fone/i.test(textoOriginalParaAnalise);
             if (temOsirFone && !alertaAdicionado.osirFone) {
                 alertContainer.appendChild(criarCardAlerta(
-                    "TELEFONIA FIXA: VERIFICAR SE FOI INSTALADA!",
+                    "TELEFONIA FIXA: VERIFICAR SE FOI INSTALADA! COM OS EQUIPAMENTOS ADEQUADOS.",
                     "#e3f2fd", "#0d47a1", "#1976d2", "📞"
                 ));
                 alertaAdicionado.osirFone = true;
@@ -255,7 +247,27 @@
                 alertaAdicionado.wifiPro = true;
             }
 
-            // ✅ Portabilidade - CORRIGIDO! (palavra exata)
+            // ✅ WiFi Enterprise - 🏢
+            const temWifiEnterprise = /WiFi\s*Enterprise|Wi-Fi\s*Enterprise|WifiEnterprise|wifiEnterprise|WI-FI\s*ENTERPRISE|wifi\s+empresarial|wi-fi\s+empresarial/i.test(textoOriginalParaAnalise);
+            if (temWifiEnterprise && !alertaAdicionado.wifiEnterprise) {
+                alertContainer.appendChild(criarCardAlerta(
+                    "WIFI ENTERPRISE: VERIFICAR SE FOI INSTALADO. EQUIPAMENTOS NECESSÁRIOS: ONU > RB > EAPs",
+                    "#e8f5e9", "#1b5e20", "#43a047", "🏢"
+                ));
+                alertaAdicionado.wifiEnterprise = true;
+            }
+
+            // ✅ IP Fixo - 🌐
+            const temIpFixo = /IP\s*Fixo|IP\s*FIXO|ip\s*fixo|IP\s*Estático|ip\s*estático|IP\s*ESTÁTICO/i.test(textoOriginalParaAnalise);
+            if (temIpFixo && !alertaAdicionado.ipFixo) {
+                alertContainer.appendChild(criarCardAlerta(
+                    "IP FIXO: VERIFICAR SE FOI CONFIGURADO NO ROTEADOR!",
+                    "#e3f2fd", "#0d47a1", "#1976d2", "🌐"
+                ));
+                alertaAdicionado.ipFixo = true;
+            }
+
+            // ✅ Portabilidade - 💚
             const temPortabilidade = /\bportabilidade\b/i.test(textoOriginalParaAnalise);
             if (temPortabilidade && !alertaAdicionado.portabilidade) {
                 alertContainer.appendChild(criarCardAlerta(
@@ -263,26 +275,6 @@
                     "#e8f5e9", "#1b5e20", "#4caf50", "💚"
                 ));
                 alertaAdicionado.portabilidade = true;
-            }
-
-            // ✅ Migração de Tecnologia - 🔄 (NOVO!)
-            const temMigracao = /\bmigração\b|\bmigracao\b|\btroca\s+de\s+tecnologia\b/i.test(textoOriginalParaAnalise);
-            if (temMigracao && !alertaAdicionado.migracao) {
-                alertContainer.appendChild(criarCardAlerta(
-                    "MIGRAÇÃO DE TECNOLOGIA: VERIFICAR O PROCESSO!",
-                    "#e8eaf6", "#283593", "#3f51b5", "🔄"
-                ));
-                alertaAdicionado.migracao = true;
-            }
-
-            // ✅ Mudança de Plano - 📊 (NOVO!)
-            const temMudancaPlano = /\bmudança\s+de\s+plano\b|\btroca\s+de\s+plano\b|\balteração\s+de\s+plano\b/i.test(textoOriginalParaAnalise);
-            if (temMudancaPlano && !alertaAdicionado.mudancaPlano) {
-                alertContainer.appendChild(criarCardAlerta(
-                    "MUDANÇA DE PLANO: VERIFICAR O NOVO PLANO!",
-                    "#fff8e1", "#e65100", "#ff8f00", "📊"
-                ));
-                alertaAdicionado.mudancaPlano = true;
             }
 
         } catch (err) {
@@ -387,7 +379,7 @@
         processarAlertas();
     } catch (e) {}
 
-    console.log(`✅ ${SCRIPT_VERSION} - Alertas: OsirFone, OsirMóvel, WiFi Pro, Portabilidade, Migração, Mudança de Plano`);
+    console.log(`✅ ${SCRIPT_VERSION} - Alertas: Troca de Endereço, OsirFone, OsirMóvel, WiFi Pro, WiFi Enterprise, IP Fixo, Portabilidade`);
     console.log(`✅ Auditor de estoque ativo`);
 
 })();
