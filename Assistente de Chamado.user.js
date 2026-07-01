@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Osir - Assistente de Chamado
 // @namespace    http://tampermonkey.net/
-// @version      1.2.6
+// @version      1.2.8
 // @description  Alertas automáticos de planos e auditor de estoque
 // @author       Alisson Guerreiro
 // @match        https://erp.osirnet.com.br/*
@@ -15,7 +15,7 @@
     // =========================================================================
     // VERSÃO E CONTROLE
     // =========================================================================
-    const SCRIPT_VERSION = '1.2.6';
+    const SCRIPT_VERSION = '1.2.8';
     console.log(`🚀 Osir Assistente de Chamado v${SCRIPT_VERSION} carregado!`);
 
     // =========================================================================
@@ -112,6 +112,61 @@
     }
 
     // =========================================================================
+    // FUNÇÃO PARA OBTER O TEXTO DA OS (BUSCA APENAS NA ÁREA CORRETA)
+    // =========================================================================
+    function obterTextoOS() {
+        // Busca o elemento que contém o texto da OS
+        // Prioridade: elementos com classes específicas que contêm o texto
+        const seletores = [
+            '.jss1109',           // Classe identificada no HTML
+            '.jss961',            // Classe pai do conteúdo
+            '.jss925',            // Classe do container
+            '.ck-content',        // Editor de texto
+            '.ql-editor',         // Editor alternativo
+            '.dx-htmleditor-content', // Outro editor
+            '[contenteditable="true"]' // Campo editável
+        ];
+
+        for (let seletor of seletores) {
+            const elemento = document.querySelector(seletor);
+            if (elemento && elemento.innerText && elemento.innerText.trim().length > 10) {
+                return elemento.innerText.trim();
+            }
+        }
+
+        // Se não encontrou com os seletores, busca por divs que contenham "---- Planos ----" ou "---- Serviços ----"
+        const todasDivs = document.querySelectorAll('div');
+        for (let div of todasDivs) {
+            if (div.innerText) {
+                const txt = div.innerText;
+                if ((txt.includes('---- Planos ----') || txt.includes('---- Serviços ----')) && 
+                    !div.classList.contains('ql-editor') && 
+                    !div.classList.contains('dx-htmleditor-content') &&
+                    !div.classList.contains('MuiTab-wrapper')) {
+                    return txt.trim();
+                }
+            }
+        }
+
+        // Fallback: tenta encontrar qualquer div que pareça ser o texto da OS
+        for (let div of todasDivs) {
+            if (div.innerText && div.innerText.length > 100 && 
+                !div.classList.contains('ql-editor') && 
+                !div.classList.contains('dx-htmleditor-content') &&
+                !div.classList.contains('MuiTab-wrapper')) {
+                // Verifica se contém palavras típicas de uma OS
+                const txt = div.innerText.toLowerCase();
+                if (txt.includes('cliente') || txt.includes('contrato') || txt.includes('endereço') || 
+                    txt.includes('plano') || txt.includes('serviço')) {
+                    return div.innerText.trim();
+                }
+            }
+        }
+
+        return "";
+    }
+
+    // =========================================================================
     // MÓDULO 1: NOTIFICADOR DE PLANOS
     // =========================================================================
     let ultimaCategoria = null;
@@ -127,46 +182,22 @@
             }
 
             const categoryAtual = inputCategoria.value ? inputCategoria.value.trim() : "";
-            let divDemandaCompleta = null;
-            const todasAsDivs = document.querySelectorAll('div');
+            
+            // =============================================================
+            // ⭐ OBTEM O TEXTO DA OS APENAS DA ÁREA CORRETA ⭐
+            // =============================================================
+            let textoOSOriginal = obterTextoOS();
 
-            for (let div of todasAsDivs) {
-                if (div.innerText) {
-                    let txt = normalizarTexto(div.innerText);
-                    if (txt.includes("---- servicos ----") ||
-                        txt.includes("---- servicos a serem ativados ----") ||
-                        txt.includes("planos") ||
-                        txt.includes("troca de endereco") ||
-                        txt.includes("custo r 80 00") ||
-                        txt.includes("portabilidade") ||
-                        txt.includes("wifi pro") ||
-                        txt.includes("wifi enterprise") ||
-                        txt.includes("ip fixo") ||
-                        txt.includes("osir fone") ||
-                        txt.includes("osir movel")) {
-                        if (!div.classList.contains('ql-editor') && !div.classList.contains('dx-htmleditor-content')) {
-                            divDemandaCompleta = div;
-                            break;
-                        }
-                    }
-                }
-            }
-
-            if (!divDemandaCompleta) {
+            if (!textoOSOriginal || textoOSOriginal.length < 10) {
                 alertContainer.innerHTML = "";
                 return;
             }
 
-            const cloneMemoria = divDemandaCompleta.cloneNode(true);
-            cloneMemoria.querySelectorAll('.ql-editor, .dx-htmleditor-content, .ck-content, [contenteditable="true"]').forEach(el => el.remove());
-            let textoOSOriginal = cloneMemoria.innerText || "";
-
+            // Verifica se mudou para evitar repetições
             if (categoryAtual === ultimaCategoria && textoOSOriginal === ultimoTextoOS) return;
             ultimaCategoria = categoryAtual;
             ultimoTextoOS = textoOSOriginal;
             alertContainer.innerHTML = "";
-
-            if (!textoOSOriginal.trim()) return;
 
             let txtNorm = normalizarTexto(textoOSOriginal).replace(/https?:\/\/\S+/gi, "").replace(/\S+@\S+\.\S+/gi, "");
 
@@ -187,94 +218,61 @@
             }
 
             // =============================================================
-            // EXTRAI TEXTO PARA ANÁLISE
+            // ⭐ TODAS AS VERIFICAÇÕES USAM APENAS O TEXTO DA OS ⭐
             // =============================================================
-            let textoParaAnalise = "";
-            const matchPlanos = textoOSOriginal.match(/----\s*Planos\s*----\s*([\s\S]*?)$/i);
-            if (matchPlanos && matchPlanos[1]) {
-                textoParaAnalise = matchPlanos[1].trim();
-            } else {
-                const matchServicos = textoOSOriginal.match(/----\s*Serviços\s*----\s*([\s\S]*?)$/i);
-                if (matchServicos && matchServicos[1]) {
-                    textoParaAnalise = matchServicos[1].trim();
-                } else {
-                    textoParaAnalise = textoOSOriginal;
-                }
-            }
-
-            if (!textoParaAnalise.trim()) {
-                return;
-            }
-
-            const textoOriginalParaAnalise = textoParaAnalise;
-
-            let alertaAdicionado = {
-                osirFone: false,
-                osirMovel: false,
-                wifiPro: false,
-                wifiEnterprise: false,
-                ipFixo: false,
-                portabilidade: false
-            };
-
+            
             // ✅ OsirFone - 📞
-            const temOsirFone = /OsirFone|osirfone|Osir Fone|osir fone/i.test(textoOriginalParaAnalise);
-            if (temOsirFone && !alertaAdicionado.osirFone) {
+            const temOsirFone = /OsirFone|osirfone|Osir Fone|osir fone/i.test(txtNorm);
+            if (temOsirFone) {
                 alertContainer.appendChild(criarCardAlerta(
                     "TELEFONIA FIXA: VERIFICAR SE FOI INSTALADA! COM OS EQUIPAMENTOS ADEQUADOS.",
                     "#e3f2fd", "#0d47a1", "#1976d2", "📞"
                 ));
-                alertaAdicionado.osirFone = true;
             }
 
             // ✅ OsirMóvel - 📱
-            const temOsirMovel = /OsirMóvel|osirmovel|Osir Movel|osir movel|OSIRMÓVEL/i.test(textoOriginalParaAnalise);
-            if (temOsirMovel && !alertaAdicionado.osirMovel) {
+            const temOsirMovel = /OsirMóvel|osirmovel|Osir Movel|osir movel|OSIRMÓVEL/i.test(txtNorm);
+            if (temOsirMovel) {
                 alertContainer.appendChild(criarCardAlerta(
                     "OSIRMÓVEL: VERIFICAR SE O CHIP FOI ENTREGUE!",
                     "#fff3e0", "#e65100", "#ff9800", "📱"
                 ));
-                alertaAdicionado.osirMovel = true;
             }
 
             // ✅ WiFi Pro - 🌐
-            const temWifiPro = /WiFi\s*Pro|Wi-Fi\s*Pro|WifiPro|wifipro|WiFi\s*PRO|WI-FI\s*PRO|wifi\s+profissional|wi-fi\s+profissional/i.test(textoOriginalParaAnalise);
-            if (temWifiPro && !alertaAdicionado.wifiPro) {
+            const temWifiPro = /WiFi\s*Pro|Wi-Fi\s*Pro|WifiPro|wifipro|WiFi\s*PRO|WI-FI\s*PRO|wifi\s+profissional|wi-fi\s+profissional/i.test(txtNorm);
+            if (temWifiPro) {
                 alertContainer.appendChild(criarCardAlerta(
                     "WIFI-PRO: VERIFICAR SE FOI INSTALADO!",
                     "#f3e5f5", "#4a148c", "#9c27b0", "🌐"
                 ));
-                alertaAdicionado.wifiPro = true;
             }
 
             // ✅ WiFi Enterprise - 🏢
-            const temWifiEnterprise = /WiFi\s*Enterprise|Wi-Fi\s*Enterprise|WifiEnterprise|wifiEnterprise|WI-FI\s*ENTERPRISE|wifi\s+empresarial|wi-fi\s+empresarial/i.test(textoOriginalParaAnalise);
-            if (temWifiEnterprise && !alertaAdicionado.wifiEnterprise) {
+            const temWifiEnterprise = /WiFi\s*Enterprise|Wi-Fi\s*Enterprise|WifiEnterprise|wifiEnterprise|WI-FI\s*ENTERPRISE|wifi\s+empresarial|wi-fi\s+empresarial/i.test(txtNorm);
+            if (temWifiEnterprise) {
                 alertContainer.appendChild(criarCardAlerta(
                     "WIFI ENTERPRISE: VERIFICAR SE FOI INSTALADO. EQUIPAMENTOS NECESSÁRIOS: ONU > RB > EAPs",
                     "#e8f5e9", "#1b5e20", "#43a047", "🏢"
                 ));
-                alertaAdicionado.wifiEnterprise = true;
             }
 
             // ✅ IP Fixo - 🌐
-            const temIpFixo = /IP\s*Fixo|IP\s*FIXO|ip\s*fixo|IP\s*Estático|ip\s*estático|IP\s*ESTÁTICO/i.test(textoOriginalParaAnalise);
-            if (temIpFixo && !alertaAdicionado.ipFixo) {
+            const temIpFixo = /IP\s*Fixo|IP\s*FIXO|ip\s*fixo|IP\s*Estático|ip\s*estático|IP\s*ESTÁTICO/i.test(txtNorm);
+            if (temIpFixo) {
                 alertContainer.appendChild(criarCardAlerta(
                     "IP FIXO: VERIFICAR SE FOI CONFIGURADO NO ROTEADOR!",
                     "#e3f2fd", "#0d47a1", "#1976d2", "🌐"
                 ));
-                alertaAdicionado.ipFixo = true;
             }
 
             // ✅ Portabilidade - 💚
-            const temPortabilidade = /\bportabilidade\b/i.test(textoOriginalParaAnalise);
-            if (temPortabilidade && !alertaAdicionado.portabilidade) {
+            const temPortabilidade = /\bportabilidade\b/i.test(txtNorm);
+            if (temPortabilidade) {
                 alertContainer.appendChild(criarCardAlerta(
                     "PORTABILIDADE ATIVA: VERIFICAR A PORTABILIDADE!",
                     "#e8f5e9", "#1b5e20", "#4caf50", "💚"
                 ));
-                alertaAdicionado.portabilidade = true;
             }
 
         } catch (err) {
