@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Osir - Assistente de Chamado
 // @namespace    http://tampermonkey.net/
-// @version      1.2.8
+// @version      1.2.9
 // @description  Alertas automáticos de planos e auditor de estoque
 // @author       Alisson Guerreiro
 // @match        https://erp.osirnet.com.br/*
@@ -15,7 +15,7 @@
     // =========================================================================
     // VERSÃO E CONTROLE
     // =========================================================================
-    const SCRIPT_VERSION = '1.2.8';
+    const SCRIPT_VERSION = '1.2.9';
     console.log(`🚀 Osir Assistente de Chamado v${SCRIPT_VERSION} carregado!`);
 
     // =========================================================================
@@ -112,58 +112,87 @@
     }
 
     // =========================================================================
-    // FUNÇÃO PARA OBTER O TEXTO DA OS (BUSCA APENAS NA ÁREA CORRETA)
+    // FUNÇÃO PARA OBTER O TEXTO DA OS (BUSCA APENAS NA DEMANDA DO CLIENTE)
     // =========================================================================
     function obterTextoOS() {
-        // Busca o elemento que contém o texto da OS
-        // Prioridade: elementos com classes específicas que contêm o texto
-        const seletores = [
-            '.jss1109',           // Classe identificada no HTML
-            '.jss961',            // Classe pai do conteúdo
-            '.jss925',            // Classe do container
-            '.ck-content',        // Editor de texto
-            '.ql-editor',         // Editor alternativo
-            '.dx-htmleditor-content', // Outro editor
-            '[contenteditable="true"]' // Campo editável
-        ];
+        try {
+            // =============================================================
+            // PASSO 1: Encontrar o título "Demanda do Cliente"
+            // =============================================================
+            const todosParagrafos = document.querySelectorAll('p');
+            let elementoDemanda = null;
 
-        for (let seletor of seletores) {
-            const elemento = document.querySelector(seletor);
-            if (elemento && elemento.innerText && elemento.innerText.trim().length > 10) {
-                return elemento.innerText.trim();
-            }
-        }
-
-        // Se não encontrou com os seletores, busca por divs que contenham "---- Planos ----" ou "---- Serviços ----"
-        const todasDivs = document.querySelectorAll('div');
-        for (let div of todasDivs) {
-            if (div.innerText) {
-                const txt = div.innerText;
-                if ((txt.includes('---- Planos ----') || txt.includes('---- Serviços ----')) && 
-                    !div.classList.contains('ql-editor') && 
-                    !div.classList.contains('dx-htmleditor-content') &&
-                    !div.classList.contains('MuiTab-wrapper')) {
-                    return txt.trim();
+            for (let p of todosParagrafos) {
+                if (p.innerText && p.innerText.trim() === 'Demanda do Cliente') {
+                    elementoDemanda = p;
+                    break;
                 }
             }
-        }
 
-        // Fallback: tenta encontrar qualquer div que pareça ser o texto da OS
-        for (let div of todasDivs) {
-            if (div.innerText && div.innerText.length > 100 && 
-                !div.classList.contains('ql-editor') && 
-                !div.classList.contains('dx-htmleditor-content') &&
-                !div.classList.contains('MuiTab-wrapper')) {
-                // Verifica se contém palavras típicas de uma OS
-                const txt = div.innerText.toLowerCase();
-                if (txt.includes('cliente') || txt.includes('contrato') || txt.includes('endereço') || 
-                    txt.includes('plano') || txt.includes('serviço')) {
-                    return div.innerText.trim();
+            if (!elementoDemanda) {
+                console.log('⚠️ Título "Demanda do Cliente" não encontrado');
+                return '';
+            }
+
+            // =============================================================
+            // PASSO 2: Encontrar o container pai que contém o texto
+            // =============================================================
+            // Sobe para o pai que contém a seção inteira
+            let container = elementoDemanda.closest('.MuiBox-root') || elementoDemanda.parentElement;
+            
+            // Se não encontrou um container adequado, tenta subir mais
+            if (container) {
+                // Procura por um div irmão ou filho que contenha o texto
+                const possiveisContainers = container.querySelectorAll('div');
+                for (let div of possiveisContainers) {
+                    const texto = div.innerText || '';
+                    // Verifica se o div contém texto típico da OS e não é o editor
+                    if (texto.length > 50 && 
+                        !div.classList.contains('ql-editor') && 
+                        !div.classList.contains('dx-htmleditor-content') &&
+                        !div.classList.contains('MuiTab-wrapper') &&
+                        !div.querySelector('.ql-editor') &&
+                        !div.querySelector('.dx-htmleditor-content')) {
+                        // Verifica se contém palavras típicas da OS
+                        const txtLower = texto.toLowerCase();
+                        if (txtLower.includes('venda') || txtLower.includes('planos') || 
+                            txtLower.includes('endereço') || txtLower.includes('serviços')) {
+                            return texto.trim();
+                        }
+                    }
                 }
             }
-        }
 
-        return "";
+            // =============================================================
+            // PASSO 3: Fallback - busca por conteúdo típico da OS
+            // =============================================================
+            const todasDivs = document.querySelectorAll('div');
+            for (let div of todasDivs) {
+                if (div.innerText) {
+                    const txt = div.innerText;
+                    // Verifica se é o texto da OS e não é o editor
+                    if (txt.length > 100 &&
+                        !div.classList.contains('ql-editor') &&
+                        !div.classList.contains('dx-htmleditor-content') &&
+                        !div.classList.contains('MuiTab-wrapper') &&
+                        !div.querySelector('.ql-editor') &&
+                        !div.querySelector('.dx-htmleditor-content')) {
+                        const txtLower = txt.toLowerCase();
+                        if ((txtLower.includes('venda') || txtLower.includes('planos')) &&
+                            (txtLower.includes('endereço') || txtLower.includes('serviços'))) {
+                            return txt.trim();
+                        }
+                    }
+                }
+            }
+
+            console.log('⚠️ Texto da OS não encontrado');
+            return '';
+
+        } catch (err) {
+            console.error('Erro ao buscar texto da OS:', err);
+            return '';
+        }
     }
 
     // =========================================================================
@@ -182,9 +211,9 @@
             }
 
             const categoryAtual = inputCategoria.value ? inputCategoria.value.trim() : "";
-            
+
             // =============================================================
-            // ⭐ OBTEM O TEXTO DA OS APENAS DA ÁREA CORRETA ⭐
+            // ⭐ OBTEM O TEXTO DA OS APENAS DA DEMANDA DO CLIENTE ⭐
             // =============================================================
             let textoOSOriginal = obterTextoOS();
 
@@ -220,7 +249,7 @@
             // =============================================================
             // ⭐ TODAS AS VERIFICAÇÕES USAM APENAS O TEXTO DA OS ⭐
             // =============================================================
-            
+
             // ✅ OsirFone - 📞
             const temOsirFone = /OsirFone|osirfone|Osir Fone|osir fone/i.test(txtNorm);
             if (temOsirFone) {
