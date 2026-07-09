@@ -1,17 +1,17 @@
 // ==UserScript==
 // @name         Assistente de Cadastro Tatelecom
-// @namespace    https://github.com/SEU-USUARIO/assistente-cadastro-tatelecom
-// @version      1.0.0
+// @namespace    https://github.com/AlissonGuerreiro/meus-scripts
+// @version      1.0.1
 // @description  Copia dados do ERP e preenche automaticamente no Tatelecom
-// @author       SEU-NOME
+// @author       Alisson Guerreiro
 // @match        https://erp.osirnet.com.br/*
 // @match        http://sistema.tatelecom.com.br/*
 // @match        https://sistema.tatelecom.com.br/*
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @license      MIT
-// @homepage     https://github.com/SEU-USUARIO/assistente-cadastro-tatelecom
-// @supportURL   https://github.com/SEU-USUARIO/assistente-cadastro-tatelecom/issues
+// @homepage     https://github.com/AlissonGuerreiro/meus-scripts
+// @supportURL   https://github.com/AlissonGuerreiro/meus-scripts/issues
 // ==/UserScript==
 
 (function() {
@@ -480,9 +480,23 @@
     }
 
     // ============================================
-    // INJETAR BOTÃO ERP
+    // FUNÇÃO PARA VERIFICAR SE É O MODAL CORRETO
+    // ============================================
+    function isModalInformacoes() {
+        const titulo = document.querySelector('.MuiDialog-container .MuiTypography-root[class*="MuiTypography-h6"]');
+        if (!titulo) return false;
+        return titulo.textContent.trim().startsWith('Informações -');
+    }
+
+    // ============================================
+    // INJETAR BOTÃO ERP (SÓ NO MODAL DE INFORMAÇÕES)
     // ============================================
     function injetarBotaoERP() {
+        // Só injeta se for o modal de informações do cliente
+        if (!isModalInformacoes()) {
+            return;
+        }
+
         if (document.getElementById('btn-copiar-erp')) return;
         const toolbar = document.querySelector('.MuiDialog-container .MuiToolbar-root');
         if (!toolbar) return;
@@ -497,7 +511,7 @@
         });
         btn.addEventListener('click', copiarDadosCliente);
         toolbar.insertBefore(btn, toolbar.firstChild);
-        log('Botão ERP injetado', 'success');
+        log('Botão ERP injetado (modal de informações)', 'success');
     }
 
     // ============================================
@@ -619,7 +633,7 @@
         if (isTatelecom) injetarBotoesTatelecom();
     }, 1500);
 
-    console.log('🚀 Assistente de Cadastro Tatelecom v1.0.0 carregado!');
+    console.log('🚀 Assistente de Cadastro Tatelecom v1.0.1 carregado!');
     console.log('📌 Modo:', isERP ? 'ERP' : isTatelecom ? 'Tatelecom' : 'Outro');
     console.log('🔇 Sem notificações - feedback visual nos botões');
     console.log('📊 Logs disponíveis no console (F12)');
