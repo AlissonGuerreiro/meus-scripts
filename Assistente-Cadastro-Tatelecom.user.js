@@ -1,17 +1,17 @@
 // ==UserScript==
 // @name         Assistente de Cadastro Tatelecom
-// @namespace    https://github.com/AlissonGuerreiro/meus-scripts
-// @version      1.0.1
+// @namespace    https://github.com/SEU-USUARIO/assistente-cadastro-tatelecom
+// @version      1.1.0
 // @description  Copia dados do ERP e preenche automaticamente no Tatelecom
-// @author       Alisson Guerreiro
+// @author       SEU-NOME
 // @match        https://erp.osirnet.com.br/*
 // @match        http://sistema.tatelecom.com.br/*
 // @match        https://sistema.tatelecom.com.br/*
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @license      MIT
-// @homepage     https://github.com/AlissonGuerreiro/meus-scripts
-// @supportURL   https://github.com/AlissonGuerreiro/meus-scripts/issues
+// @homepage     https://github.com/SEU-USUARIO/assistente-cadastro-tatelecom
+// @supportURL   https://github.com/SEU-USUARIO/assistente-cadastro-tatelecom/issues
 // ==/UserScript==
 
 (function() {
@@ -35,16 +35,30 @@
         if (!btn) return;
         const originalText = btn.textContent;
         const originalBg = btn.style.backgroundColor;
-        
+
         btn.textContent = (sucesso ? '✅ ' : '❌ ') + msg;
         btn.style.backgroundColor = sucesso ? '#2e7d32' : '#c62828';
         btn.style.color = 'white';
-        
+
         setTimeout(() => {
             btn.textContent = originalText;
             btn.style.backgroundColor = originalBg || '';
             btn.style.color = '';
         }, 1500);
+    }
+
+    // ============================================
+    // VERIFICAR SE É MODAL DE INFORMAÇÕES DO CLIENTE
+    // ============================================
+    function isModalInformacoesCliente() {
+        const modal = document.querySelector('.MuiDialog-container');
+        if (!modal) return false;
+
+        const titulo = modal.querySelector('.MuiTypography-root[class*="MuiTypography-h6"]');
+        if (titulo && titulo.textContent.includes('Informações -')) {
+            return true;
+        }
+        return false;
     }
 
     // ============================================
@@ -58,13 +72,13 @@
         }
 
         try {
-            const dados = { 
-                nome: '', 
-                documento: '', 
-                endereco: '', 
-                cep: '', 
-                dataNascimento: '', 
-                email: '', 
+            const dados = {
+                nome: '',
+                documento: '',
+                endereco: '',
+                cep: '',
+                dataNascimento: '',
+                email: '',
                 celular: '',
                 logradouro: '',
                 numero: '',
@@ -127,7 +141,7 @@
             dados.dataNascimento = getValueByLabel('Data de Nascimento:');
             dados.email = getValueByLabel('Email:');
             dados.celular = getValueByLabel('Celular:');
-            
+
             const endInfo = getEnderecoCompleto();
             dados.endereco = endInfo.endereco;
             dados.cep = endInfo.cep;
@@ -159,7 +173,7 @@
 
         try {
             const partes = enderecoCompleto.split(',').map(p => p.trim());
-            
+
             if (partes.length >= 1) {
                 const primeira = partes[0];
                 const numMatch = primeira.match(/\s(\d+)$/);
@@ -227,7 +241,7 @@
     function copiarDadosCliente() {
         const btn = document.getElementById('btn-copiar-erp');
         const dados = extrairDadosERP();
-        
+
         if (dados) {
             GM_setValue('dados_cliente_erp', JSON.stringify(dados));
             feedbackBotao(btn, true, 'Copiado!');
@@ -295,7 +309,7 @@
     function preencherCpf() {
         const btn = document.getElementById('btn-preenche-cpf');
         const dados = JSON.parse(GM_getValue('dados_cliente_erp') || '{}');
-        
+
         if (!dados.documento) {
             feedbackBotao(btn, false, 'Sem CPF');
             log('Capture os dados no ERP primeiro!', 'error');
@@ -318,7 +332,7 @@
     function preencherTudoAutomatico() {
         const btn = document.getElementById('btn-auto-tudo');
         const dados = JSON.parse(GM_getValue('dados_cliente_erp') || '{}');
-        
+
         if (!dados.nome) {
             feedbackBotao(btn, false, 'Sem dados');
             log('Capture os dados no ERP primeiro!', 'error');
@@ -360,17 +374,17 @@
         setTimeout(() => {
             const telTab = document.querySelector('a[href="#primaryhome"]');
             if (telTab) telTab.click();
-            
+
             setTimeout(() => {
                 if (dados.celular) {
                     let tel = dados.celular.replace(/\D/g, '');
                     if (tel.length === 11) tel = `(${tel.slice(0,2)})${tel.slice(2,7)}-${tel.slice(7)}`;
                     else if (tel.length === 10) tel = `(${tel.slice(0,2)})${tel.slice(2,6)}-${tel.slice(6)}`;
-                    
+
                     const telInput = document.querySelector('input[wire\\:model="telefones.0.numero"]');
                     if (telInput) {
                         forcarInputLivewire(telInput, tel, 'Telefone');
-                        
+
                         setTimeout(() => {
                             const tipoSelect = document.querySelector('select[wire\\:model="telefones.0.tipo"]');
                             if (tipoSelect) forcarInputLivewire(tipoSelect, 'Celular WhatsApp', 'Tipo');
@@ -408,7 +422,7 @@
             let cepLimpo = dados.cep.replace(/\D/g, '');
             if (cepLimpo.length === 8) cepLimpo = `${cepLimpo.slice(0,5)}-${cepLimpo.slice(5)}`;
             forcarInputLivewire(cepInput, cepLimpo, 'CEP');
-            
+
             setTimeout(() => {
                 let btn = document.querySelector(`button[wire\\:click*="busca_cep(${index})"]`);
                 if (!btn) {
@@ -480,25 +494,21 @@
     }
 
     // ============================================
-    // FUNÇÃO PARA VERIFICAR SE É O MODAL CORRETO
-    // ============================================
-    function isModalInformacoes() {
-        const titulo = document.querySelector('.MuiDialog-container .MuiTypography-root[class*="MuiTypography-h6"]');
-        if (!titulo) return false;
-        return titulo.textContent.trim().startsWith('Informações -');
-    }
-
-    // ============================================
-    // INJETAR BOTÃO ERP (SÓ NO MODAL DE INFORMAÇÕES)
+    // INJETAR BOTÃO ERP
     // ============================================
     function injetarBotaoERP() {
-        // Só injeta se for o modal de informações do cliente
-        if (!isModalInformacoes()) {
+        // SÓ INJETA SE FOR A MODAL DE INFORMAÇÕES DO CLIENTE
+        if (!isModalInformacoesCliente()) {
             return;
         }
 
         if (document.getElementById('btn-copiar-erp')) return;
-        const toolbar = document.querySelector('.MuiDialog-container .MuiToolbar-root');
+
+        const modal = document.querySelector('.MuiDialog-container');
+        if (!modal) return;
+
+        // Procura a toolbar dentro da modal específica
+        const toolbar = modal.querySelector('.MuiToolbar-root');
         if (!toolbar) return;
 
         const btn = document.createElement('button');
@@ -511,7 +521,7 @@
         });
         btn.addEventListener('click', copiarDadosCliente);
         toolbar.insertBefore(btn, toolbar.firstChild);
-        log('Botão ERP injetado (modal de informações)', 'success');
+        log('Botão ERP injetado na modal de informações', 'success');
     }
 
     // ============================================
@@ -532,7 +542,7 @@
                 whiteSpace: 'nowrap'
             });
             btn.addEventListener('click', preencherCpf);
-            
+
             const parent = cpfInput.parentElement;
             parent.style.display = 'flex';
             parent.style.gap = '5px';
@@ -556,7 +566,7 @@
             if (nomeInput) form = nomeInput.closest('form');
         }
 
-        let target = form || document.querySelector('.card-body.p-3') || 
+        let target = form || document.querySelector('.card-body.p-3') ||
                      document.querySelector('.card-body') ||
                      document.querySelector('.main-content') ||
                      document.body;
@@ -614,7 +624,7 @@
         } else {
             target.appendChild(container);
         }
-        
+
         log('✅ Botão "Preenchimento Completo" injetado!', 'success');
     }
 
@@ -633,7 +643,7 @@
         if (isTatelecom) injetarBotoesTatelecom();
     }, 1500);
 
-    console.log('🚀 Assistente de Cadastro Tatelecom v1.0.1 carregado!');
+    console.log('🚀 Assistente de Cadastro Tatelecom v1.1.0 carregado!');
     console.log('📌 Modo:', isERP ? 'ERP' : isTatelecom ? 'Tatelecom' : 'Outro');
     console.log('🔇 Sem notificações - feedback visual nos botões');
     console.log('📊 Logs disponíveis no console (F12)');
