@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Osir - Assistente de Chamado
 // @namespace    http://tampermonkey.net/
-// @version      1.3.8
-// @description  Alertas automáticos de planos e auditor de estoque
+// @version      1.3.9
+// @description  Alertas automáticos de planos, auditor de estoque e esconder botão
 // @author       Alisson Guerreiro
 // @match        https://erp.osirnet.com.br/*
 // @grant        none
@@ -12,7 +12,7 @@
 (function() {
     'use strict';
 
-    const SCRIPT_VERSION = '1.3.8';
+    const SCRIPT_VERSION = '1.3.9';
     console.log(`🚀 Osir Assistente de Chamado v${SCRIPT_VERSION} carregado!`);
 
     // =========================================================================
@@ -110,6 +110,34 @@
         card.style.cssText = "background-color: #fffde7; color: #f57f17; border: 2px solid #fbc02d; border-radius: 8px; padding: 14px; font-size: 12px; font-weight: bold; line-height: 1.5; box-shadow: 0px 4px 12px rgba(0,0,0,0.2); text-align: center; pointer-events: auto;";
         card.innerHTML = `⚠️ LIMITE EXCEDIDO!<br><span style="color:#000; font-size:13px;">"${item}"</span><br>Quantidade alocada: <span style="font-size:14px; color:#e65100;">${qtd} MTS</span><br>O limite do teste é 350 MTS!`;
         return card;
+    }
+
+    // =========================================================================
+    // FUNÇÃO PARA ESCONDER O BOTÃO INFERNAL (NOVO!)
+    // =========================================================================
+    function esconderBotaoProtocolo() {
+        try {
+            const botoes = document.querySelectorAll('button.MuiButtonBase-root.MuiButton-root');
+            let encontrado = false;
+
+            botoes.forEach(botao => {
+                if (botao.textContent && botao.textContent.trim() === 'Abrir novo protocolo para o mesmo cliente') {
+                    botao.style.display = 'none';
+                    encontrado = true;
+                    if (!window._botaoEscondido) {
+                        console.log('✅ Botão "Abrir novo protocolo para o mesmo cliente" escondido!');
+                        window._botaoEscondido = true;
+                    }
+                }
+            });
+
+            if (!encontrado && !window._botaoEscondido) {
+                // Tenta novamente com mais tempo
+                setTimeout(esconderBotaoProtocolo, 2000);
+            }
+        } catch (err) {
+            // Ignora erros para não quebrar o resto
+        }
     }
 
     // =========================================================================
@@ -456,9 +484,17 @@
     // =========================================================================
     setInterval(rodarAuditoriaGlobal, 1500);
 
+    // Inicia o esconder botão
+    setTimeout(esconderBotaoProtocolo, 500);
+    setTimeout(esconderBotaoProtocolo, 1500);
+    setTimeout(esconderBotaoProtocolo, 3000);
+    setTimeout(esconderBotaoProtocolo, 5000);
+
     const observador = new MutationObserver(() => {
         try {
             processarAlertas();
+            // Tenta esconder o botão sempre que houver mudanças na página
+            esconderBotaoProtocolo();
         } catch (e) {}
     });
     observador.observe(document.body, { childList: true, subtree: true });
@@ -478,5 +514,6 @@
     console.log(`✅ ${SCRIPT_VERSION} - Alertas: Troca de Endereço, OsirFone, OsirMóvel, WiFi Pro, WiFi Enterprise`);
     console.log(`✅ Auditor de estoque ativo`);
     console.log(`✅ Detecção melhorada para "Osir Fone" com espaço`);
+    console.log(`✅ Botão "Abrir novo protocolo" será escondido automaticamente`);
 
 })();
