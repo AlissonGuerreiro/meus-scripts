@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Osir - Assistente de Provisionamento
 // @namespace    http://tampermonkey.net/
-// @version      5.2.4
-// @description  CORRIGIDO: VLAN 2200 (STL_CE_3/4, TTN_LAN, GAR, ROS) + Normalização STLDC→DC, PTN_NOVA→PTN + Botão 📋 Copiar PE+Slot+Porta + Remoção Complementar + Preparar Dados no lugar do Chamado
+// @version      5.2.6
+// @description  CORRIGIDO: VLAN 2200 (STL_CE_3/4, TTN_LAN, GAR, ROS) + Normalização STLDC→DC, PTN_NOVA→PTN + Botão 📋 Copiar PE+Slot+Porta + Remoção Complementar + Preparar Dados no lugar do Chamado + VLAN e Porta Web preenchem campos do contrato
 // @author       Alisson Guerreiro
 // @match        *://*.osirnet.com.br/*
 // @match        *://*.osir.net.br/*
@@ -320,7 +320,7 @@
         // ============================================================
         if (pa.includes("STL_CE3_R") || pa.includes("STL_CE4_R") ||
             pa.includes("STL_CE_3") || pa.includes("STL_CE_4") ||
-            pa.includes("TTN_LAN") || 
+            pa.includes("TTN_LAN") ||
             pa.includes("GAR") ||    // Garibaldi
             pa.includes("ROS")) {    // Rosário do Sul
             return "2200";
@@ -1267,8 +1267,30 @@
     }
 
     // =========================================================================
-    // JANELA DA ESQUERDA (CONFIGURAÇÃO)
+    // JANELA DA ESQUERDA (CONFIGURAÇÃO) - COMPLETAMENTE REFATORADA
     // =========================================================================
+
+    // NOVA FUNÇÃO: Mapeia modelo → tipo de provisionamento (Bridge/Router)
+    function getTipoProvisionamentoPorModelo(modeloLabel) {
+        const modelosBridge = [
+            'Huawei Bridge',
+            'ZTE Bridge',
+            'Raisecom Bridge',
+            'Raisecom Bridge (Des.)',
+            'Ektech Bridge'
+        ];
+
+        const modelosRouter = [
+            'Huawei Router',
+            'Raisecom Router',
+            'ZTE Router'
+        ];
+
+        if (modelosBridge.includes(modeloLabel)) return 'b';
+        if (modelosRouter.includes(modeloLabel)) return 'r';
+        return 'b'; // padrão: Bridge
+    }
+
     function getModeloLabel() {
         const selected = document.querySelector('input[name="modelo-equipamento"]:checked');
         if (!selected) return 'Bridge';
@@ -1355,6 +1377,11 @@
             partes.push(`Senha: ${senhaForm}`);
         }
 
+        // ============================================================
+        // VLAN e Porta Web NÃO vão mais no complemento
+        // Elas são preenchidas diretamente nos campos do contrato
+        // ============================================================
+
         const resultado = partes.join(' || ');
         return resultado
             .replace(/\|\|\s*\|\|/g, '||')
@@ -1369,17 +1396,70 @@
             const complemento = montarComplementoConfig();
             preview.textContent = complemento || 'Nenhum dado disponível';
         }
+
+        // ============================================================
+        // Atualizar displays de VLAN e Porta Web (apenas para visualização)
+        // ============================================================
+        const vlanDisplay = document.getElementById('osir-vlan-display');
+        const portaDisplay = document.getElementById('osir-portaweb-display');
+
+        if (vlanDisplay || portaDisplay) {
+            const dados = getDadosDoFormulario();
+            const modelo = getModeloLabel();
+            const tipo = getTipoProvisionamentoPorModelo(modelo);
+
+            const vlan = calcularVlanOsir('', dados.slot, dados.porta);
+            const portaWeb = definirPortaWeb(tipo);
+
+            if (vlanDisplay) vlanDisplay.textContent = vlan || '---';
+            if (portaDisplay) portaDisplay.textContent = portaWeb || '80';
+        }
     }
 
     function atualizarComplemento() {
         const campoComplemento = document.getElementById('AuthenticationContractComplement');
         if (!campoComplemento) return;
 
+        // ============================================================
+        // 1. CALCULAR VLAN E PORTA WEB
+        // ============================================================
+        const dados = getDadosDoFormulario();
+        const modelo = getModeloLabel();
+        const tipoProv = getTipoProvisionamentoPorModelo(modelo);
+
+        const vlan = calcularVlanOsir('', dados.slot, dados.porta);
+        const portaWeb = definirPortaWeb(tipoProv);
+
+        // ============================================================
+        // 2. PREENCHER CAMPOS DO FORMULÁRIO
+        // ============================================================
+        // Preencher VLAN
+        const campoVlan = document.getElementById('AuthenticationContractVlan');
+        if (campoVlan && vlan && vlan !== "XX") {
+            campoVlan.value = vlan;
+            campoVlan.dispatchEvent(new Event('input', { bubbles: true }));
+            campoVlan.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+
+        // Preencher Porta Web
+        const campoPortaWeb = document.getElementById('AuthenticationContractEquipmentPort');
+        if (campoPortaWeb && portaWeb) {
+            campoPortaWeb.value = portaWeb;
+            campoPortaWeb.dispatchEvent(new Event('input', { bubbles: true }));
+            campoPortaWeb.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+
+        // ============================================================
+        // 3. GERAR COMPLEMENTO
+        // ============================================================
         const complemento = montarComplementoConfig();
         campoComplemento.value = complemento;
         campoComplemento.dispatchEvent(new Event('input', { bubbles: true }));
         campoComplemento.dispatchEvent(new Event('change', { bubbles: true }));
 
+        // ============================================================
+        // 4. FEEDBACK VISUAL
+        // ============================================================
         const btn = document.querySelector('#osir-config-complement-window button:first-of-type');
         if (btn) {
             btn.textContent = '✅ OK';
@@ -1389,13 +1469,44 @@
                 btn.style.background = 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)';
             }, 1500);
         }
+
         atualizarPreviewConfig();
     }
 
     function buscarDados() {
-        getDadosDoFormulario();
+        // Buscar dados do formulário
+        const dados = getDadosDoFormulario();
+
+        // Atualizar preview
         atualizarPreviewConfig();
 
+        // ============================================================
+        // PREENCHER CAMPOS COM DADOS BUSCADOS
+        // ============================================================
+        // Calcular VLAN e Porta Web baseado nos dados buscados
+        const modelo = getModeloLabel();
+        const tipoProv = getTipoProvisionamentoPorModelo(modelo);
+
+        const vlan = calcularVlanOsir('', dados.slot, dados.porta);
+        const portaWeb = definirPortaWeb(tipoProv);
+
+        // Preencher VLAN
+        const campoVlan = document.getElementById('AuthenticationContractVlan');
+        if (campoVlan && vlan && vlan !== "XX") {
+            campoVlan.value = vlan;
+            campoVlan.dispatchEvent(new Event('input', { bubbles: true }));
+            campoVlan.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+
+        // Preencher Porta Web
+        const campoPortaWeb = document.getElementById('AuthenticationContractEquipmentPort');
+        if (campoPortaWeb && portaWeb) {
+            campoPortaWeb.value = portaWeb;
+            campoPortaWeb.dispatchEvent(new Event('input', { bubbles: true }));
+            campoPortaWeb.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+
+        // Gerar e preencher complemento
         const campoComplemento = document.getElementById('AuthenticationContractComplement');
         if (campoComplemento) {
             const complemento = montarComplementoConfig();
@@ -1443,10 +1554,38 @@
         const portaForm = document.getElementById('AuthenticationContractPortOlt')?.value?.trim() || '';
         const idForm = document.getElementById('AuthenticationContractOltId')?.value?.trim() || '';
 
+        // ============================================================
+        // CALCULAR VLAN E PORTA WEB
+        // ============================================================
+        const vlan = calcularVlanOsir('', dados.slot, dados.porta);
+        const tipoProv = getTipoProvisionamentoPorModelo(modeloAutomatico);
+        const portaWeb = definirPortaWeb(tipoProv);
+
+        // ============================================================
+        // PREENCHER CAMPOS DO FORMULÁRIO
+        // ============================================================
+        // Preencher VLAN
+        const campoVlan = document.getElementById('AuthenticationContractVlan');
+        if (campoVlan && vlan && vlan !== "XX") {
+            campoVlan.value = vlan;
+            campoVlan.dispatchEvent(new Event('input', { bubbles: true }));
+            campoVlan.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+
+        // Preencher Porta Web
+        const campoPortaWeb = document.getElementById('AuthenticationContractEquipmentPort');
+        if (campoPortaWeb && portaWeb) {
+            campoPortaWeb.value = portaWeb;
+            campoPortaWeb.dispatchEvent(new Event('input', { bubbles: true }));
+            campoPortaWeb.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+
+        // ============================================================
+        // MONTAR COMPLEMENTO
+        // ============================================================
         let partes = [];
 
         if (wifiPro) partes.push('Cliente Wifi Pro');
-
         partes.push(modeloAutomatico);
 
         if (serial && serial !== 'XX' && serial !== '') {
@@ -1479,14 +1618,22 @@
             partes.push(`Senha: ${senhaForm}`);
         }
 
+        // ============================================================
+        // NÃO ADICIONAR VLAN E PORTA WEB NO COMPLEMENTO
+        // (Elas vão direto nos campos do formulário)
+        // ============================================================
+
         const complementoAutomatico = partes.join(' || ');
 
+        // Preencher complemento
         campoComplemento.value = complementoAutomatico;
         campoComplemento.dispatchEvent(new Event('input', { bubbles: true }));
         campoComplemento.dispatchEvent(new Event('change', { bubbles: true }));
 
+        // Atualizar preview
         atualizarPreviewConfig();
 
+        // Feedback visual
         const btn = document.querySelector('#osir-config-complement-window button:nth-child(3)');
         if (btn) {
             btn.textContent = '✅ OK';
@@ -1497,11 +1644,13 @@
             }, 1500);
         }
 
+        // Atualizar checkboxes
         const wifiCheck = document.getElementById('osir-wifi-pro-check');
         const zteCheck = document.getElementById('osir-autentica-zte-check');
         if (wifiCheck) wifiCheck.checked = wifiPro;
         if (zteCheck) zteCheck.checked = precisaZTE;
 
+        // Atualizar modelo selecionado
         const modelosMap = {
             'Huawei Bridge': 'modelo-huawei-bridge',
             'ZTE Bridge': 'modelo-zte-bridge',
@@ -1544,6 +1693,20 @@
         if (preview) {
             preview.textContent = 'Selecione um modelo...';
         }
+
+        // ============================================================
+        // Limpar displays de VLAN e Porta Web
+        // ============================================================
+        const vlanDisplay = document.getElementById('osir-vlan-display');
+        const portaDisplay = document.getElementById('osir-portaweb-display');
+        if (vlanDisplay) vlanDisplay.textContent = '---';
+        if (portaDisplay) portaDisplay.textContent = '80';
+
+        // Limpar campos do formulário também
+        const campoVlan = document.getElementById('AuthenticationContractVlan');
+        const campoPortaWeb = document.getElementById('AuthenticationContractEquipmentPort');
+        if (campoVlan) campoVlan.value = '';
+        if (campoPortaWeb) campoPortaWeb.value = '';
 
         const btn = document.querySelector('#osir-config-complement-window button:nth-child(4)');
         if (btn) {
@@ -1777,6 +1940,26 @@
 
         janela.appendChild(opcoesContainer);
 
+        // ============================================================
+        // Display de VLAN e Porta Web (apenas visualização)
+        // ============================================================
+        const infoContainer = document.createElement('div');
+        infoContainer.style.cssText = `
+            background: #f0f4ff;
+            padding: 6px 10px;
+            border-radius: 4px;
+            margin: 6px 0;
+            font-size: 10px;
+            border: 1px solid #d1d5db;
+            display: flex;
+            justify-content: space-between;
+        `;
+        infoContainer.innerHTML = `
+            <span>VLAN: <strong id="osir-vlan-display">---</strong></span>
+            <span>Porta Web: <strong id="osir-portaweb-display">80</strong></span>
+        `;
+        janela.appendChild(infoContainer);
+
         const previewLabel = document.createElement('div');
         previewLabel.style.cssText = `
             font-weight: 700;
@@ -1896,117 +2079,6 @@
 
         menuContainer.parentNode.insertBefore(janela, menuContainer.nextSibling);
         setTimeout(atualizarPreviewConfig, 100);
-    }
-
-    // =========================================================================
-    // JANELA FLUTUANTE DE CONTRATO SALVO
-    // =========================================================================
-    function exibirJanelaContratoSalvo(contratoId, data) {
-        if (document.getElementById('osir-alerta-salvo')) return;
-
-        const dataFormatada = data.toLocaleString('pt-BR', {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-
-        const alerta = document.createElement('div');
-        alerta.id = 'osir-alerta-salvo';
-        alerta.style.cssText = `
-            position: fixed;
-            bottom: 75px;
-            right: 15px;
-            width: 320px;
-            background: #ffffff;
-            border: 2px solid #10b981;
-            border-radius: 10px;
-            box-shadow: 0 8px 32px rgba(16, 185, 129, 0.25);
-            z-index: 99999;
-            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
-            overflow: hidden;
-            animation: osirFadeIn 0.4s ease;
-        `;
-
-        const header = document.createElement('div');
-        header.style.cssText = `
-            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-            padding: 8px 12px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        `;
-        header.innerHTML = `
-            <span style="color: white; font-weight: 700; font-size: 12px; display: flex; align-items: center; gap: 6px;">
-                <span style="font-size: 14px;">✅</span>
-                CONTRATO SALVO
-            </span>
-            <button onclick="this.closest('#osir-alerta-salvo').remove()" style="
-                background: rgba(255,255,255,0.2);
-                border: 1px solid rgba(255,255,255,0.3);
-                color: white;
-                padding: 2px 8px;
-                border-radius: 4px;
-                cursor: pointer;
-                font-weight: 700;
-                font-size: 13px;
-            ">✕</button>
-        `;
-        alerta.appendChild(header);
-
-        const body = document.createElement('div');
-        body.style.cssText = `
-            padding: 12px 14px 14px 14px;
-        `;
-        body.innerHTML = `
-            <div style="font-size: 12px; color: #1f2937; font-weight: 600;">
-                Contrato #${contratoId} salvo com sucesso!
-            </div>
-            <div style="font-size: 11px; color: #6b7280; margin-bottom: 10px;">
-                📅 ${dataFormatada}
-            </div>
-            <div style="display: flex; gap: 8px; justify-content: flex-end;">
-                <button onclick="this.closest('#osir-alerta-salvo').remove()" style="
-                    padding: 4px 16px;
-                    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-                    color: white;
-                    border: none;
-                    border-radius: 4px;
-                    cursor: pointer;
-                    font-weight: 700;
-                    font-size: 11px;
-                    transition: all 0.2s ease;
-                    box-shadow: 0 2px 6px rgba(16,185,129,0.25);
-                " onmouseover="this.style.transform='scale(1.04)'" onmouseout="this.style.transform='scale(1)'">
-                    OK
-                </button>
-            </div>
-        `;
-        alerta.appendChild(body);
-
-        if (!document.getElementById('osir-animation-style')) {
-            const style = document.createElement('style');
-            style.id = 'osir-animation-style';
-            style.textContent = `
-                @keyframes osirFadeIn {
-                    from { transform: translateY(20px); opacity: 0; }
-                    to { transform: translateY(0); opacity: 1; }
-                }
-            `;
-            document.head.appendChild(style);
-        }
-
-        document.body.appendChild(alerta);
-
-        setTimeout(() => {
-            const el = document.getElementById('osir-alerta-salvo');
-            if (el) {
-                el.style.opacity = '0';
-                el.style.transform = 'translateY(20px)';
-                setTimeout(() => el.remove(), 400);
-            }
-        }, 300000);
     }
 
     // =========================================================================
@@ -2236,11 +2308,123 @@
         }, 3000);
     }
 
-    console.log('🚀 Osir Assistente v5.2.4');
+    // =========================================================================
+    // JANELA DE ALERTA CONTRATO SALVO
+    // =========================================================================
+    function exibirJanelaContratoSalvo(contratoId, data) {
+        if (document.getElementById('osir-alerta-salvo')) return;
+
+        const dataFormatada = data.toLocaleString('pt-BR', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+
+        const alerta = document.createElement('div');
+        alerta.id = 'osir-alerta-salvo';
+        alerta.style.cssText = `
+            position: fixed;
+            bottom: 75px;
+            right: 15px;
+            width: 320px;
+            background: #ffffff;
+            border: 2px solid #10b981;
+            border-radius: 10px;
+            box-shadow: 0 8px 32px rgba(16, 185, 129, 0.25);
+            z-index: 99999;
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+            overflow: hidden;
+            animation: osirFadeIn 0.4s ease;
+        `;
+
+        const header = document.createElement('div');
+        header.style.cssText = `
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            padding: 8px 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        `;
+        header.innerHTML = `
+            <span style="color: white; font-weight: 700; font-size: 12px; display: flex; align-items: center; gap: 6px;">
+                <span style="font-size: 14px;">✅</span>
+                CONTRATO SALVO
+            </span>
+            <button onclick="this.closest('#osir-alerta-salvo').remove()" style="
+                background: rgba(255,255,255,0.2);
+                border: 1px solid rgba(255,255,255,0.3);
+                color: white;
+                padding: 2px 8px;
+                border-radius: 4px;
+                cursor: pointer;
+                font-weight: 700;
+                font-size: 13px;
+            ">✕</button>
+        `;
+        alerta.appendChild(header);
+
+        const body = document.createElement('div');
+        body.style.cssText = `
+            padding: 12px 14px 14px 14px;
+        `;
+        body.innerHTML = `
+            <div style="font-size: 12px; color: #1f2937; font-weight: 600;">
+                Contrato #${contratoId} salvo com sucesso!
+            </div>
+            <div style="font-size: 11px; color: #6b7280; margin-bottom: 10px;">
+                📅 ${dataFormatada}
+            </div>
+            <div style="display: flex; gap: 8px; justify-content: flex-end;">
+                <button onclick="this.closest('#osir-alerta-salvo').remove()" style="
+                    padding: 4px 16px;
+                    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+                    color: white;
+                    border: none;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    font-weight: 700;
+                    font-size: 11px;
+                    transition: all 0.2s ease;
+                    box-shadow: 0 2px 6px rgba(16,185,129,0.25);
+                " onmouseover="this.style.transform='scale(1.04)'" onmouseout="this.style.transform='scale(1)'">
+                    OK
+                </button>
+            </div>
+        `;
+        alerta.appendChild(body);
+
+        if (!document.getElementById('osir-animation-style')) {
+            const style = document.createElement('style');
+            style.id = 'osir-animation-style';
+            style.textContent = `
+                @keyframes osirFadeIn {
+                    from { transform: translateY(20px); opacity: 0; }
+                    to { transform: translateY(0); opacity: 1; }
+                }
+            `;
+            document.head.appendChild(style);
+        }
+
+        document.body.appendChild(alerta);
+
+        setTimeout(() => {
+            const el = document.getElementById('osir-alerta-salvo');
+            if (el) {
+                el.style.opacity = '0';
+                el.style.transform = 'translateY(20px)';
+                setTimeout(() => el.remove(), 400);
+            }
+        }, 300000);
+    }
+
+    console.log('🚀 Osir Assistente v5.2.6');
     console.log('✅ VLAN 2200 para STL_CE_3/4, TTN_LAN, GAR, ROS');
     console.log('✅ Normalização: STLDC 01→DC 1, STLDC 02→DC 2, PTN_NOVA→PTN');
     console.log('✅ Botão 📋 para copiar PE+Slot+Porta');
     console.log('✅ Botão Complementar removido');
     console.log('✅ Botão Preparar Dados substituiu o Chamado');
+    console.log('✅ VLAN e Porta Web preenchem campos do contrato na janela esquerda');
 
 })();
