@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Osir - Assistente de Chamado
 // @namespace    http://tampermonkey.net/
-// @version      1.4.0
+// @version      1.4.1
 // @description  Alertas automáticos de planos, auditor de estoque e esconder botão
 // @author       Alisson Guerreiro
 // @match        https://erp.osirnet.com.br/*
@@ -12,7 +12,7 @@
 (function() {
     'use strict';
 
-    const SCRIPT_VERSION = '1.4.0';
+    const SCRIPT_VERSION = '1.4.1';
     console.log(`🚀 Osir Assistente de Chamado v${SCRIPT_VERSION} carregado!`);
 
     // =========================================================================
@@ -79,22 +79,22 @@
     }
 
     // =========================================================================
-    // FUNÇÃO MELHORADA PARA DETECTAR SERVIÇOS
+    // FUNÇÃO MELHORADA PARA DETECTAR SERVIÇOS (COM HÍFEN OPCIONAL)
     // =========================================================================
     function detectarServico(texto, servico) {
         const txt = normalizarTexto(texto);
         
         switch(servico) {
             case 'wifiPro':
-                // 🌐 WiFi Pro - Internet profissional
-                return /\bw[ei]\s*f[ei]\s*pro\b|\bw[ei]fipro\b/.test(txt);
+                // 🌐 WiFi Pro - Detecta: WiFi Pro, Wi-Fi Pro, Wi Fi Pro, Wifi Pro, Wifipro
+                return /\bw[ei]\s*[-]?\s*f[ei]\s*pro\b|\bw[ei]fipro\b/.test(txt);
                        
             case 'wifiEnterprise':
                 // 🏢 WiFi Enterprise - Internet empresarial
-                return /\bw[ei]\s*f[ei]\s*(enterprise|empresarial)\b/.test(txt);
+                return /\bw[ei]\s*[-]?\s*f[ei]\s*(enterprise|empresarial)\b/.test(txt);
                 
             case 'osirFone':
-                // 📞 TELEFONE FIXO - Osir Fone, Telefonia Fixa
+                // 📞 TELEFONE FIXO - Osir Fone, OsirFone, Telefonia Fixa
                 return /(osir|ozir)\s*(fone|foni|fono|fixo|telefone|telefonia)/.test(txt) ||
                        /telefonia\s*(osir|ozir)/.test(txt);
                        
@@ -133,6 +133,7 @@
                 if (txt.includes('Osir Móvel')) score += 5;
                 if (txt.includes('Osir Fone')) score += 5;
                 if (txt.includes('WiFi Pro')) score += 5;
+                if (txt.includes('Wi-Fi Pro')) score += 5; // ⭐ NOVO
                 
                 // Texto grande e com conteúdo relevante
                 if (txt.length > 50 && txt.length < 10000) score += txt.length / 100;
@@ -273,6 +274,9 @@
             // Normaliza para comparação
             const txtNorm = normalizarTexto(textoOSOriginal);
             const catNorm = normalizarTexto(categoryAtual);
+
+            // LOG PARA DEBUG DO TEXTO NORMALIZADO
+            console.log('📝 Texto normalizado:', txtNorm);
 
             // =============================================================
             // VERIFICA SE É TROCA DE ENDEREÇO
@@ -467,7 +471,7 @@
 
     console.log(`✅ ${SCRIPT_VERSION} - Alertas: Troca de Endereço (apenas WiFi Pro), OsirFone, OsirMóvel, WiFi Pro, WiFi Enterprise`);
     console.log(`✅ Auditor de estoque ativo`);
-    console.log(`✅ Detecção melhorada com variações de texto`);
+    console.log(`✅ Detecção melhorada com variações de texto (incluindo Wi-Fi com hífen)`);
     console.log(`✅ Botão "Abrir novo protocolo" será escondido automaticamente`);
     console.log(`📌 OSIRMÓVEL = CHIP DE CELULAR | OSIRFONE = TELEFONE FIXO`);
 
