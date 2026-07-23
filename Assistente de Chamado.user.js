@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Osir - Assistente de Chamado
 // @namespace    http://tampermonkey.net/
-// @version      1.3.9
+// @version      1.4.0
 // @description  Alertas automáticos de planos, auditor de estoque e esconder botão
 // @author       Alisson Guerreiro
 // @match        https://erp.osirnet.com.br/*
@@ -12,7 +12,7 @@
 (function() {
     'use strict';
 
-    const SCRIPT_VERSION = '1.3.9';
+    const SCRIPT_VERSION = '1.4.0';
     console.log(`🚀 Osir Assistente de Chamado v${SCRIPT_VERSION} carregado!`);
 
     // =========================================================================
@@ -66,13 +66,111 @@
     const listaFerramentasNormalizada = FERRAMENTAS_PROIBIDAS.map(normalizarItem);
     const CABO_DROP_NORMALIZADO = normalizarItem("CABO ÓPTICO (DROP)");
 
-    // NÃO REMOVER CARACTERES ESPECIAIS DOS NOMES DOS SERVIÇOS
+    // =========================================================================
+    // FUNÇÃO DE NORMALIZAÇÃO (Mantém números e símbolos importantes)
+    // =========================================================================
     function normalizarTexto(texto) {
         if (!texto) return "";
-        // Remove apenas acentos, mas mantém hífens e espaços para detectar "Osir Fone" e "Wi-Fi"
-        return texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-                    .replace(/\s+/g, " ")  // Normaliza espaços
-                    .toLowerCase().trim();
+        return texto
+            .toLowerCase()
+            .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // Remove acentos
+            .replace(/\s+/g, " ")                            // Espaços duplos -> simples
+            .trim();
+    }
+
+    // =========================================================================
+    // FUNÇÃO MELHORADA PARA DETECTAR SERVIÇOS
+    // =========================================================================
+    function detectarServico(texto, servico) {
+        const txt = normalizarTexto(texto);
+        
+        switch(servico) {
+            case 'wifiPro':
+                // 🌐 WiFi Pro - Internet profissional
+                return /\bw[ei]\s*f[ei]\s*pro\b|\bw[ei]fipro\b/.test(txt);
+                       
+            case 'wifiEnterprise':
+                // 🏢 WiFi Enterprise - Internet empresarial
+                return /\bw[ei]\s*f[ei]\s*(enterprise|empresarial)\b/.test(txt);
+                
+            case 'osirFone':
+                // 📞 TELEFONE FIXO - Osir Fone, Telefonia Fixa
+                return /(osir|ozir)\s*(fone|foni|fono|fixo|telefone|telefonia)/.test(txt) ||
+                       /telefonia\s*(osir|ozir)/.test(txt);
+                       
+            case 'osirMovel':
+                // 📱 CHIP DE CELULAR - Osir Móvel, Chip Osir, Osir Celular
+                return /(osir|ozir)\s*(movel|móvel|chip|celular|mobile)/.test(txt) ||
+                       /(chip|celular)\s*(osir|ozir)/.test(txt) ||
+                       /\bosir\s*m[oó]vel\b/.test(txt);
+                       
+            default:
+                return false;
+        }
+    }
+
+    // =========================================================================
+    // FUNÇÃO ROBUSTA PARA OBTER O TEXTO DA DEMANDA
+    // =========================================================================
+    function obterTextoOS() {
+        try {
+            // Busca elementos que contêm texto da demanda
+            const elementos = document.querySelectorAll('p, div, span, td, [class*="demanda"], [class*="cliente"]');
+            let textoEncontrado = '';
+            let melhorScore = 0;
+            
+            for (let el of elementos) {
+                const txt = el.innerText || el.textContent || '';
+                
+                // Sistema de pontuação
+                let score = 0;
+                if (txt.includes('Demanda do Cliente')) score += 10;
+                if (txt.includes('Serviços a serem ativados')) score += 8;
+                if (txt.includes('-- Venda pelo vendedor')) score += 5;
+                if (txt.includes('Adesão: R$')) score += 3;
+                if (txt.includes('Forma de pagamento:')) score += 3;
+                if (txt.includes('---- Serviços ----')) score += 5;
+                if (txt.includes('Osir Móvel')) score += 5;
+                if (txt.includes('Osir Fone')) score += 5;
+                if (txt.includes('WiFi Pro')) score += 5;
+                
+                // Texto grande e com conteúdo relevante
+                if (txt.length > 50 && txt.length < 10000) score += txt.length / 100;
+                
+                if (score > melhorScore) {
+                    melhorScore = score;
+                    textoEncontrado = txt;
+                }
+            }
+            
+            // Limpa o texto
+            if (textoEncontrado) {
+                // Remove cabeçalho "Demanda do Cliente"
+                textoEncontrado = textoEncontrado.replace(/^Demanda do Cliente\s*/, '');
+                
+                // CORTA NO "Relato de Atendimento"
+                const indexRelato = textoEncontrado.indexOf('Relato de Atendimento');
+                if (indexRelato !== -1) {
+                    textoEncontrado = textoEncontrado.substring(0, indexRelato);
+                }
+                
+                // Remove "Expandir" e outros textos indesejados
+                textoEncontrado = textoEncontrado.replace(/Expandir/g, '').replace(/expandir/g, '');
+                
+                return textoEncontrado.trim();
+            }
+            
+            // Fallback: busca no body
+            const bodyText = document.body.innerText || '';
+            if (bodyText.length > 100) {
+                return bodyText;
+            }
+            
+            return '';
+        } catch (err) {
+            console.error('Erro ao buscar texto:', err);
+            return '';
+        }
     }
 
     // =========================================================================
@@ -113,7 +211,7 @@
     }
 
     // =========================================================================
-    // FUNÇÃO PARA ESCONDER O BOTÃO INFERNAL (NOVO!)
+    // FUNÇÃO PARA ESCONDER O BOTÃO INFERNAL
     // =========================================================================
     function esconderBotaoProtocolo() {
         try {
@@ -132,178 +230,15 @@
             });
 
             if (!encontrado && !window._botaoEscondido) {
-                // Tenta novamente com mais tempo
                 setTimeout(esconderBotaoProtocolo, 2000);
             }
         } catch (err) {
-            // Ignora erros para não quebrar o resto
+            // Ignora erros
         }
     }
 
     // =========================================================================
-    // FUNÇÃO PARA DETECTAR SERVIÇOS (TODAS AS VARIAÇÕES) - VERSÃO MELHORADA
-    // =========================================================================
-    function detectarServico(texto, servico) {
-        const txtLower = texto.toLowerCase();
-
-        switch(servico) {
-            case 'wifiPro':
-                // Todas as variações possíveis de WiFi Pro
-                const wifiProPatterns = [
-                    /wifi\s*pro/,
-                    /wi-fi\s*pro/,
-                    /wi\s*fi\s*pro/,
-                    /wifipro/,
-                    /wifi\s*profissional/,
-                    /wi-fi\s*profissional/,
-                    /wi\s*fi\s*profissional/,
-                    /wifi\s*pro/,
-                    /wi-fi\s*pro/
-                ];
-                return wifiProPatterns.some(pattern => pattern.test(txtLower));
-
-            case 'wifiEnterprise':
-                // Todas as variações possíveis de WiFi Enterprise
-                const wifiEnterprisePatterns = [
-                    /wifi\s*enterprise/,
-                    /wi-fi\s*enterprise/,
-                    /wi\s*fi\s*enterprise/,
-                    /wifi\s+empresarial/,
-                    /wi-fi\s+empresarial/,
-                    /enterprise\s+wifi/,
-                    /empresarial\s+wifi/
-                ];
-                return wifiEnterprisePatterns.some(pattern => pattern.test(txtLower));
-
-            case 'osirFone':
-                // Todas as variações possíveis de OsirFone
-                const osirFonePatterns = [
-                    /osir\s*fone/,
-                    /osirfone/,
-                    /osir\s+telefone/,
-                    /telefonia\s+osir/,
-                    /osir\s+fixa/,
-                    /osir\s+telefonia/,
-                    /osir\s+fone\s+ilimitado/,
-                    /fone\s+osir/
-                ];
-                return osirFonePatterns.some(pattern => pattern.test(txtLower));
-
-            case 'osirMovel':
-                // Todas as variações possíveis de OsirMóvel
-                const osirMovelPatterns = [
-                    /osir\s*m[oó]vel/,
-                    /osirm[oó]vel/,
-                    /osir\s+movel/,
-                    /chip\s+osir/,
-                    /osir\s+chip/,
-                    /osir\s+celular/,
-                    /osir\s+mobile/
-                ];
-                return osirMovelPatterns.some(pattern => pattern.test(txtLower));
-
-            default:
-                return false;
-        }
-    }
-
-    // =========================================================================
-    // FUNÇÃO PARA OBTER O TEXTO DA DEMANDA DO CLIENTE
-    // =========================================================================
-    function obterTextoOS() {
-        try {
-            console.log('🔍 Buscando TODO o texto da Demanda do Cliente...');
-
-            // Estratégia 1: Encontrar pelo título
-            const todosElementos = document.querySelectorAll('p, div, span');
-            let tituloDemanda = null;
-
-            for (let el of todosElementos) {
-                const texto = el.innerText ? el.innerText.trim() : '';
-                if (texto === 'Demanda do Cliente' && el.tagName === 'P') {
-                    tituloDemanda = el;
-                    console.log('✅ Título "Demanda do Cliente" encontrado');
-                    break;
-                }
-            }
-
-            if (tituloDemanda) {
-                let container = tituloDemanda.closest('.MuiBox-root') || tituloDemanda.parentElement;
-
-                if (container) {
-                    let textoCompleto = container.innerText || container.textContent || '';
-                    textoCompleto = textoCompleto.replace(/^Demanda do Cliente\s*/, '');
-
-                    const indexRelato = textoCompleto.indexOf('Relato de Atendimento');
-                    if (indexRelato !== -1) {
-                        textoCompleto = textoCompleto.substring(0, indexRelato);
-                    }
-
-                    textoCompleto = textoCompleto.replace(/Expandir/g, '').replace(/expandir/g, '');
-
-                    if (textoCompleto && textoCompleto.length > 50) {
-                        console.log('✅ Texto completo obtido do container!');
-                        return textoCompleto.trim();
-                    }
-                }
-            }
-
-            // Estratégia 2: Buscar diretamente pelo conteúdo
-            const todosDivs = document.querySelectorAll('div');
-            let melhorTexto = '';
-            let melhorScore = 0;
-
-            for (let div of todosDivs) {
-                const texto = div.innerText || div.textContent || '';
-
-                if (texto.includes('-- Venda pelo vendedor') ||
-                    texto.includes('Adesão: R$') ||
-                    texto.includes('Forma de pagamento:')) {
-
-                    if (!texto.includes('Instalação efetuada com sucesso') ||
-                        !texto.includes('CTO:')) {
-
-                        let textoLimpo = texto;
-                        const indexRelato = textoLimpo.indexOf('Relato de Atendimento');
-                        if (indexRelato !== -1) {
-                            textoLimpo = textoLimpo.substring(0, indexRelato);
-                        }
-
-                        textoLimpo = textoLimpo.replace(/Expandir/g, '').replace(/expandir/g, '');
-
-                        let score = 0;
-                        if (textoLimpo.includes('Planos')) score += 3;
-                        if (textoLimpo.includes('Endereço')) score += 3;
-                        if (textoLimpo.includes('Serviços a serem ativados')) score += 3;
-                        if (textoLimpo.includes('WI-FI PRO')) score += 2;
-                        if (textoLimpo.includes('Wi-fi Pro')) score += 2;
-                        if (textoLimpo.includes('Osir Fone')) score += 3;
-                        if (textoLimpo.includes('OsirFone')) score += 3;
-
-                        if (score > melhorScore && textoLimpo.length > 100) {
-                            melhorScore = score;
-                            melhorTexto = textoLimpo;
-                        }
-                    }
-                }
-            }
-
-            if (melhorTexto && melhorTexto.length > 100) {
-                console.log('✅ Texto completo encontrado!');
-                return melhorTexto.trim();
-            }
-
-            console.log('⚠️ Nenhum texto válido encontrado');
-            return '';
-
-        } catch (err) {
-            console.error('Erro ao buscar texto:', err);
-            return '';
-        }
-    }
-
-    // =========================================================================
-    // MÓDULO 1: NOTIFICADOR DE PLANOS
+    // PROCESSADOR DE ALERTAS (COM REGRA ESPECIAL PARA TROCA DE ENDEREÇO)
     // =========================================================================
     let ultimaCategoria = null;
     let ultimoTextoOS = "";
@@ -318,31 +253,39 @@
             }
 
             const categoryAtual = inputCategoria.value ? inputCategoria.value.trim() : "";
-            let textoOSOriginal = obterTextoOS();
+            const textoOSOriginal = obterTextoOS();
+
+            // LOG PARA DEBUG
+            console.log('📝 Texto capturado (primeiros 200 chars):', textoOSOriginal.substring(0, 200) + '...');
 
             if (!textoOSOriginal || textoOSOriginal.length < 10) {
                 alertContainer.innerHTML = "";
                 return;
             }
 
+            // Evita reprocessamento desnecessário
             if (categoryAtual === ultimaCategoria && textoOSOriginal === ultimoTextoOS) return;
+            
             ultimaCategoria = categoryAtual;
             ultimoTextoOS = textoOSOriginal;
             alertContainer.innerHTML = "";
 
-            // Mantém uma versão limpa para debug
-            let txtNorm = normalizarTexto(textoOSOriginal);
-            txtNorm = txtNorm.replace(/https?:\/\/\S+/gi, "").replace(/\S+@\S+\.\S+/gi, "");
-
-            console.log('📝 Processando alertas...');
-            console.log('📝 Texto normalizado:', txtNorm.substring(0, 500) + '...');
+            // Normaliza para comparação
+            const txtNorm = normalizarTexto(textoOSOriginal);
+            const catNorm = normalizarTexto(categoryAtual);
 
             // =============================================================
-            // TROCA DE ENDEREÇO
+            // VERIFICA SE É TROCA DE ENDEREÇO
             // =============================================================
-            if (categoryAtual.toLowerCase().includes("troca") && categoryAtual.toLowerCase().includes("ender")) {
-                const temCusto80 = /custo[\s\S]*?80\s*00/.test(txtNorm);
-                const temSimMarcado = /\([\s]*x[\s]*\)\s*sim|sim\s*\([\s]*x[\s]*\)|sim\s*\(x\)|\(x\)\s*sim/.test(txtNorm);
+            const isTrocaEndereco = catNorm.includes("troca") && catNorm.includes("ender");
+
+            // =============================================================
+            // 1. TROCA DE ENDEREÇO - REGRAS ESPECIAIS
+            // =============================================================
+            if (isTrocaEndereco) {
+                // 1.1 Verifica custo R$ 80,00
+                const temCusto80 = /custo[\s\S]*?80/.test(txtNorm);
+                const temSimMarcado = /sim/.test(txtNorm);
 
                 if (temCusto80 && temSimMarcado) {
                     alertContainer.appendChild(criarCardAlerta(
@@ -350,14 +293,26 @@
                         "#ffebee", "#c62828", "#d32f2f", "⚠️"
                     ));
                 }
-                return;
+
+                // 1.2 SÓ VERIFICA WIFI PRO NA TROCA DE ENDEREÇO
+                if (detectarServico(txtNorm, 'wifiPro')) {
+                    console.log('✅ WiFi Pro detectado na Troca de Endereço!');
+                    alertContainer.appendChild(criarCardAlerta(
+                        "WIFI-PRO: VERIFICAR SE FOI INSTALADO!",
+                        "#f3e5f5", "#4a148c", "#9c27b0", "🌐"
+                    ));
+                }
+
+                console.log('📌 Troca de Endereço: Apenas WiFi Pro será verificado.');
+                return; // SAI DA FUNÇÃO AQUI
             }
 
             // =============================================================
-            // VERIFICAÇÕES DE SERVIÇOS (USANDO A FUNÇÃO DETECTAR)
+            // 2. DEMAIS CATEGORIAS - VERIFICA TODOS OS SERVIÇOS
             // =============================================================
+            console.log('🔍 Verificando todos os serviços...');
 
-            // ✅ WiFi Pro - 🌐
+            // 🌐 WiFi Pro
             if (detectarServico(txtNorm, 'wifiPro')) {
                 console.log('✅ WiFi Pro detectado!');
                 alertContainer.appendChild(criarCardAlerta(
@@ -366,25 +321,25 @@
                 ));
             }
 
-            // ✅ WiFi Enterprise - 🏢
+            // 🏢 WiFi Enterprise
             if (detectarServico(txtNorm, 'wifiEnterprise')) {
                 console.log('✅ WiFi Enterprise detectado!');
                 alertContainer.appendChild(criarCardAlerta(
-                    "WIFI ENTERPRISE: VERIFICAR SE FOI INSTALADO. EQUIPAMENTOS NECESSÁRIOS: ONU > RB > EAPs",
+                    "WIFI ENTERPRISE: VERIFICAR SE FOI INSTALADO. EQUIPAMENTOS: ONU > RB > EAPs",
                     "#e8f5e9", "#1b5e20", "#43a047", "🏢"
                 ));
             }
 
-            // ✅ OsirFone - 📞
+            // 📞 OsirFone (TELEFONE FIXO)
             if (detectarServico(txtNorm, 'osirFone')) {
                 console.log('✅ OsirFone detectado!');
                 alertContainer.appendChild(criarCardAlerta(
-                    "TELEFONIA FIXA: VERIFICAR SE FOI INSTALADA! COM OS EQUIPAMENTOS ADEQUADOS.",
+                    "TELEFONIA FIXA: VERIFICAR SE FOI INSTALADA COM OS EQUIPAMENTOS ADEQUADOS!",
                     "#e3f2fd", "#0d47a1", "#1976d2", "📞"
                 ));
             }
 
-            // ✅ OsirMóvel - 📱
+            // 📱 OsirMóvel (CHIP DE CELULAR)
             if (detectarServico(txtNorm, 'osirMovel')) {
                 console.log('✅ OsirMóvel detectado!');
                 alertContainer.appendChild(criarCardAlerta(
@@ -493,7 +448,6 @@
     const observador = new MutationObserver(() => {
         try {
             processarAlertas();
-            // Tenta esconder o botão sempre que houver mudanças na página
             esconderBotaoProtocolo();
         } catch (e) {}
     });
@@ -511,9 +465,10 @@
         } catch (e) {}
     }, 5000);
 
-    console.log(`✅ ${SCRIPT_VERSION} - Alertas: Troca de Endereço, OsirFone, OsirMóvel, WiFi Pro, WiFi Enterprise`);
+    console.log(`✅ ${SCRIPT_VERSION} - Alertas: Troca de Endereço (apenas WiFi Pro), OsirFone, OsirMóvel, WiFi Pro, WiFi Enterprise`);
     console.log(`✅ Auditor de estoque ativo`);
-    console.log(`✅ Detecção melhorada para "Osir Fone" com espaço`);
+    console.log(`✅ Detecção melhorada com variações de texto`);
     console.log(`✅ Botão "Abrir novo protocolo" será escondido automaticamente`);
+    console.log(`📌 OSIRMÓVEL = CHIP DE CELULAR | OSIRFONE = TELEFONE FIXO`);
 
 })();
