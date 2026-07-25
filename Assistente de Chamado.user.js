@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Osir - Assistente de Chamado
 // @namespace    http://tampermonkey.net/
-// @version      1.4.4
+// @version      1.4.5
 // @description  Alertas automáticos de planos, auditor de estoque e esconder botão
 // @author       Alisson Guerreiro
 // @match        https://erp.osirnet.com.br/*
@@ -12,8 +12,61 @@
 (function() {
     'use strict';
 
-    const SCRIPT_VERSION = '1.4.4';
-    console.log(`🚀 Osir Assistente de Chamado v${SCRIPT_VERSION} carregado!`);
+    // =========================================================================
+    // CONFIGURAÇÕES
+    // =========================================================================
+    const DEBUG = true;
+    const SCRIPT_VERSION = '1.4.5';
+    const CACHE_MAX_SIZE = 1000;
+    const CACHE_CLEANUP_INTERVAL = 300000; // 5 minutos
+    const MAX_TENTATIVAS_BOTAO = 10;
+
+    // =========================================================================
+    // SELETORES MUI (CENTRALIZADOS PARA FACILITAR MANUTENÇÃO)
+    // =========================================================================
+    const MUI_SELECTORS = {
+        buttonBase: 'button.MuiButtonBase-root.MuiButton-root',
+        tabWrapper: '.MuiTab-wrapper',
+        typographyBody1: '.MuiTypography-body1',
+        typographyBody2: '.MuiTypography-body2',
+        typographyRoot: 'p.MuiTypography-root',
+        tabPanel: 'div[role="tabpanel"]'
+    };
+
+    const SELECTORS_OS = [
+        '[class*="demanda"]',
+        '[class*="cliente"]',
+        MUI_SELECTORS.typographyBody1,
+        MUI_SELECTORS.typographyBody2,
+        MUI_SELECTORS.typographyRoot,
+        MUI_SELECTORS.tabPanel
+    ];
+
+    const KEYWORDS_OS = [
+        'DEMANDA DO CLIENTE',
+        'SERVIÇOS A SEREM ATIVADOS',
+        'VENDA PELO VENDEDOR',
+        'ADESÃO: R$',
+        'FORMA DE PAGAMENTO:',
+        '---- SERVIÇOS ----',
+        'OSIR MÓVEL',
+        'OSIR FONE',
+        'WIFI PRO',
+        'WI-FI PRO'
+    ];
+
+    // =========================================================================
+    // FUNÇÃO DE LOG CONDICIONAL
+    // =========================================================================
+    function log(...args) {
+        if (DEBUG) console.log(...args);
+    }
+
+    function logError(...args) {
+        if (DEBUG) console.error(...args);
+    }
+
+    log(`🚀 Osir Assistente de Chamado v${SCRIPT_VERSION} carregado!`);
 
     // =========================================================================
     // BANCO DE DADOS (MATERIAIS E FERRAMENTAS)
@@ -65,52 +118,50 @@
 
     const SERVICO_TROCA_ENDERECO = "contratos - troca de endereço fibra";
 
-    // Cache para normalização
+    // =========================================================================
+    // FUNÇÕES AUXILIARES OTIMIZADAS (UNIFICADAS)
+    // =========================================================================
     const normalizeCache = new Map();
-    const CACHE_MAX_SIZE = 1000;
 
-    // =========================================================================
-    // FUNÇÕES AUXILIARES OTIMIZADAS
-    // =========================================================================
-    function normalizarItem(texto) {
-        if (!texto) return "";
-        
-        if (normalizeCache.has(texto)) {
-            return normalizeCache.get(texto);
+    function normalizar(str, modo = 'upper') {
+        if (!str) return "";
+
+        const cacheKey = str + '_' + modo;
+
+        if (normalizeCache.has(cacheKey)) {
+            return normalizeCache.get(cacheKey);
         }
-        
-        const result = texto.trim()
-            .replace(/^\d+\s*-\s*/, "")
+
+        let result = str.trim()
             .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-            .replace(/\s+/g, " ")
-            .toUpperCase();
-        
+            .replace(/\s+/g, " ");
+
+        result = modo === 'upper' ? result.toUpperCase() : result.toLowerCase();
+
         if (normalizeCache.size < CACHE_MAX_SIZE) {
-            normalizeCache.set(texto, result);
+            normalizeCache.set(cacheKey, result);
         }
-        
+
         return result;
+    }
+
+    // Mantendo compatibilidade com as funções antigas
+    function normalizarItem(texto) {
+        return normalizar(texto, 'upper');
     }
 
     function normalizarTexto(texto) {
-        if (!texto) return "";
-        
-        if (normalizeCache.has(texto + '_lower')) {
-            return normalizeCache.get(texto + '_lower');
-        }
-        
-        const result = texto
-            .toLowerCase()
-            .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-            .replace(/\s+/g, " ")
-            .trim();
-        
-        if (normalizeCache.size < CACHE_MAX_SIZE) {
-            normalizeCache.set(texto + '_lower', result);
-        }
-        
-        return result;
+        return normalizar(texto, 'lower');
     }
+
+    // Limpeza periódica do cache para evitar memory leak
+    setInterval(() => {
+        const tamanhoAntes = normalizeCache.size;
+        normalizeCache.clear();
+        if (tamanhoAntes > 0) {
+            log(`🧹 Cache de normalização limpo (${tamanhoAntes} itens removidos)`);
+        }
+    }, CACHE_CLEANUP_INTERVAL);
 
     // Pré-calcula listas normalizadas
     const listaPermitidaNormalizada = MATERIAIS_PERMITIDOS.map(normalizarItem);
@@ -153,10 +204,10 @@
     // =========================================================================
     function deveVerificarServico(categoria) {
         if (!categoria) return false;
-        
+
         const catNorm = normalizarTexto(categoria);
-        
-        return SERVICOS_VERIFICAR.some(servico => 
+
+        return SERVICOS_VERIFICAR.some(servico =>
             catNorm.includes(servico) || servico.includes(catNorm)
         );
     }
@@ -172,33 +223,18 @@
     // =========================================================================
     function obterTextoOS() {
         try {
-            const selectors = [
-                '[class*="demanda"]',
-                '[class*="cliente"]',
-                '.MuiTypography-body1',
-                '.MuiTypography-body2',
-                'p.MuiTypography-root',
-                'div[role="tabpanel"]'
-            ];
-            
             let textoEncontrado = '';
             let melhorScore = 0;
-            const elementos = document.querySelectorAll(selectors.join(','));
+            const elementos = document.querySelectorAll(SELECTORS_OS.join(','));
 
             for (let el of elementos) {
-                const txt = el.innerText || el.textContent || '';
+                const txt = el.textContent || '';
                 if (!txt || txt.length < 20) continue;
 
                 let score = 0;
                 const txtUpper = txt.toUpperCase();
-                
-                const keywords = [
-                    'DEMANDA DO CLIENTE', 'SERVIÇOS A SEREM ATIVADOS', 
-                    'VENDA PELO VENDEDOR', 'ADESÃO: R$', 'FORMA DE PAGAMENTO:',
-                    '---- SERVIÇOS ----', 'OSIR MÓVEL', 'OSIR FONE', 'WIFI PRO', 'WI-FI PRO'
-                ];
-                
-                keywords.forEach(keyword => {
+
+                KEYWORDS_OS.forEach(keyword => {
                     if (txtUpper.includes(keyword)) {
                         score += 10;
                     }
@@ -211,6 +247,9 @@
                 if (score > melhorScore) {
                     melhorScore = score;
                     textoEncontrado = txt;
+
+                    // Early termination: se encontrou um elemento muito bom, para de buscar
+                    if (melhorScore > 50) break;
                 }
             }
 
@@ -223,14 +262,14 @@
                 return textoEncontrado.trim();
             }
 
-            const bodyText = document.body.innerText || '';
+            const bodyText = document.body.textContent || '';
             if (bodyText.length > 100 && bodyText.length < 5000) {
                 return bodyText;
             }
 
             return '';
         } catch (err) {
-            console.error('Erro ao buscar texto:', err);
+            logError('Erro ao buscar texto:', err);
             return '';
         }
     }
@@ -254,7 +293,7 @@
     function criarCardAlerta(texto, corFundo, corTexto, corBorda, icone = "") {
         const card = document.createElement('div');
         card.style.cssText = `background-color: ${corFundo}; color: ${corTexto}; border: 2px solid ${corBorda}; border-radius: 8px; padding: 12px 15px; font-size: 12px; font-weight: bold; line-height: 1.4; box-shadow: 0px 4px 12px rgba(0,0,0,0.15); text-align: center; text-transform: uppercase; pointer-events: auto;`;
-        card.innerText = icone + " " + texto;
+        card.textContent = icone + " " + texto;
         return card;
     }
 
@@ -273,11 +312,13 @@
     }
 
     // =========================================================================
-    // FUNÇÃO PARA ESCONDER O BOTÃO
+    // FUNÇÃO PARA ESCONDER O BOTÃO (COM LIMITE DE TENTATIVAS)
     // =========================================================================
+    let tentativasBotao = 0;
+
     function esconderBotaoProtocolo() {
         try {
-            const botoes = document.querySelectorAll('button.MuiButtonBase-root.MuiButton-root');
+            const botoes = document.querySelectorAll(MUI_SELECTORS.buttonBase);
             let encontrado = false;
 
             botoes.forEach(botao => {
@@ -285,20 +326,25 @@
                     botao.style.display = 'none';
                     encontrado = true;
                     if (!window._botaoEscondido) {
-                        console.log('✅ Botão "Abrir novo protocolo para o mesmo cliente" escondido!');
+                        log('✅ Botão "Abrir novo protocolo para o mesmo cliente" escondido!');
                         window._botaoEscondido = true;
                     }
                 }
             });
 
-            if (!encontrado && !window._botaoEscondido) {
+            if (!encontrado && tentativasBotao < MAX_TENTATIVAS_BOTAO) {
+                tentativasBotao++;
                 setTimeout(esconderBotaoProtocolo, 2000);
+            } else if (tentativasBotao >= MAX_TENTATIVAS_BOTAO && !window._botaoEscondido) {
+                log('⚠️ Botão não encontrado após máximo de tentativas');
             }
-        } catch (err) {}
+        } catch (err) {
+            // Ignora erros silenciosamente
+        }
     }
 
     // =========================================================================
-    // PROCESSADOR DE ALERTAS (VERSÃO REFORMULADA 1.4.4)
+    // PROCESSADOR DE ALERTAS (VERSÃO REFORMULADA 1.4.5)
     // =========================================================================
     let ultimaCategoria = null;
     let ultimoTextoOS = "";
@@ -313,6 +359,15 @@
             }
 
             const categoryAtual = inputCategoria.value ? inputCategoria.value.trim() : "";
+
+            // Verificação antecipada: se não tem categoria, nem busca o texto da OS
+            if (!categoryAtual) {
+                alertContainer.innerHTML = "";
+                ultimaCategoria = null;
+                ultimoTextoOS = "";
+                return;
+            }
+
             const textoOSOriginal = obterTextoOS();
 
             if (!textoOSOriginal || textoOSOriginal.length < 10) {
@@ -333,15 +388,15 @@
             // ================================================================
             if (isTrocaEndereco(categoryAtual)) {
                 const temCusto80Sim = /custo\s*r?\$?\s*80[^)]*\([^)]*x\s*\)\s*sim/i.test(txtNorm);
-                
+
                 if (temCusto80Sim) {
                     alertContainer.appendChild(criarCardAlerta(
                         "ENVIAR PARA SAC N2 FAZER A COBRANÇA DE R$ 80,00!",
                         "#ffebee", "#c62828", "#d32f2f", "⚠️"
                     ));
                 }
-                
-                console.log('📌 Troca de Endereço: Verificando apenas cobrança R$ 80,00');
+
+                log('📌 Troca de Endereço: Verificando apenas cobrança R$ 80,00');
                 return;
             }
 
@@ -349,7 +404,7 @@
             // CASO 2: SERVIÇOS DA LISTA (verifica WiFi Pro, Osir Móvel, etc)
             // ================================================================
             if (deveVerificarServico(categoryAtual)) {
-                console.log(`✅ Serviço "${categoryAtual}" está na lista de verificação`);
+                log(`✅ Serviço "${categoryAtual}" está na lista de verificação`);
 
                 if (detectarServico(txtNorm, 'wifiPro')) {
                     alertContainer.appendChild(criarCardAlerta(
@@ -378,17 +433,17 @@
                         "#fff3e0", "#e65100", "#ff9800", "📱"
                     ));
                 }
-                
+
                 return;
             }
 
             // ================================================================
             // CASO 3: OUTROS SERVIÇOS (IGNORA COMPLETAMENTE)
             // ================================================================
-            console.log(`ℹ️ Serviço "${categoryAtual}" não está na lista de verificação. Ignorando.`);
-            
+            log(`ℹ️ Serviço "${categoryAtual}" não está na lista de verificação. Ignorando.`);
+
         } catch (err) {
-            console.error("Erro Notificador:", err);
+            logError("Erro Notificador:", err);
         }
     }
 
@@ -396,9 +451,9 @@
     // MÓDULO 2: AUDITOR DE ESTOQUE
     // =========================================================================
     function abaConsumoEstaAtiva(doc) {
-        const spansAba = doc.querySelectorAll('.MuiTab-wrapper');
+        const spansAba = doc.querySelectorAll(MUI_SELECTORS.tabWrapper);
         for (let span of spansAba) {
-            if (span.innerText && span.innerText.toUpperCase().includes("PRODUTOS - CONSUMO INTERNO")) {
+            if (span.textContent && span.textContent.toUpperCase().includes("PRODUTOS - CONSUMO INTERNO")) {
                 const b = span.closest('button');
                 if (b && b.classList.contains('Mui-selected')) return true;
             }
@@ -458,7 +513,9 @@
                     const resFrame = analisarGridMateriais(docFrame);
                     todosErrosItens = todosErrosItens.concat(resFrame.errosItens);
                     todosErrosQtd = todosErrosQtd.concat(resFrame.errosQtd);
-                } catch (e) {}
+                } catch (e) {
+                    // Iframe de origem diferente ou inacessível - normal
+                }
             });
 
             auditorContainer.innerHTML = "";
@@ -469,7 +526,7 @@
                 auditorContainer.appendChild(criarCardErroQuantidade(e.item, e.qtd));
             });
         } catch (err) {
-            console.error("Erro Auditoria Global:", err);
+            logError("Erro Auditoria Global:", err);
         }
     }
 
@@ -478,37 +535,42 @@
     // =========================================================================
     setInterval(rodarAuditoriaGlobal, 1500);
 
+    // Inicia as tentativas de esconder o botão (com limite de tentativas)
     setTimeout(esconderBotaoProtocolo, 500);
-    setTimeout(esconderBotaoProtocolo, 1500);
-    setTimeout(esconderBotaoProtocolo, 3000);
-    setTimeout(esconderBotaoProtocolo, 5000);
 
     const observador = new MutationObserver(() => {
         try {
             processarAlertas();
             esconderBotaoProtocolo();
-        } catch (e) {}
+        } catch (e) {
+            // Ignora erros silenciosamente
+        }
     });
     observador.observe(document.body, { childList: true, subtree: true });
 
     setTimeout(() => {
         try {
             processarAlertas();
-        } catch (e) {}
+        } catch (e) {
+            // Ignora erros silenciosamente
+        }
     }, 2000);
 
     setTimeout(() => {
         try {
             processarAlertas();
-        } catch (e) {}
+        } catch (e) {
+            // Ignora erros silenciosamente
+        }
     }, 5000);
 
-    console.log(`✅ ${SCRIPT_VERSION} - Verificação apenas para serviços específicos:`);
-    console.log(`   📋 Serviços verificados: Fibra Ativação, Fibra ativação CRM, Fibra - Ativação PJ, Fibra + Telefonia - Ativação, Fibra + Telefonia - Ativação PJ`);
-    console.log(`   🔍 Verifica: WiFi Pro, Osir Móvel, Osir Fone, WiFi Enterprise`);
-    console.log(`   💰 Troca de Endereço: Verifica apenas cobrança R$ 80,00`);
-    console.log(`   ⏭️ Demais serviços: IGNORADOS`);
-    console.log(`   📦 Auditor de estoque ativo`);
-    console.log(`   🔒 Botão de protocolo escondido`);
+    log(`✅ ${SCRIPT_VERSION} - Verificação apenas para serviços específicos:`);
+    log(`   📋 Serviços verificados: Fibra Ativação, Fibra ativação CRM, Fibra - Ativação PJ, Fibra + Telefonia - Ativação, Fibra + Telefonia - Ativação PJ`);
+    log(`   🔍 Verifica: WiFi Pro, Osir Móvel, Osir Fone, WiFi Enterprise`);
+    log(`   💰 Troca de Endereço: Verifica apenas cobrança R$ 80,00`);
+    log(`   ⏭️ Demais serviços: IGNORADOS`);
+    log(`   📦 Auditor de estoque ativo`);
+    log(`   🔒 Botão de protocolo escondido (com limite de ${MAX_TENTATIVAS_BOTAO} tentativas)`);
+    log(`   🧹 Cache limpo a cada ${CACHE_CLEANUP_INTERVAL / 1000 / 60} minutos`);
 
 })();
