@@ -1,14 +1,17 @@
 // ==UserScript==
 // @name         Osir - Assistente de Provisionamento
 // @namespace    http://tampermonkey.net/
-// @version      5.3.1
-// @description  CORRIGIDO: Splitter no complemento + Sincronizar mantendo dualidade
+// @version      5.6.1
+// @description  Provisionamento - Fila e Contrato
 // @author       Alisson Guerreiro
-// @match        *://*.osirnet.com.br/*
-// @match        *://*.osir.net.br/*
-// @match        *://*.atendimento.osir.net.br/*
+// @match        https://atendimento.osir.net.br/inviabilidade/huawei/filaProvisionamento.php
+// @match        https://erp.osirnet.com.br/authentication_contracts/contract_panel/*
 // @grant        none
 // @run-at       document-end
+// @homepage     https://github.com/AlissonGuerreiro/meus-scripts
+// @supportURL   https://github.com/AlissonGuerreiro/meus-scripts/issues
+// @downloadURL  https://raw.githubusercontent.com/AlissonGuerreiro/meus-scripts/main/Assistente%20de%20Provisionamento.user.js
+// @updateURL    https://raw.githubusercontent.com/AlissonGuerreiro/meus-scripts/main/Assistente%20de%20Provisionamento.user.js
 // ==/UserScript==
 
 (function() {
@@ -18,7 +21,7 @@
     // CONFIGURAÇÕES GERAIS
     // =========================================================================
     const DEBUG = true;
-    const SCRIPT_VERSION = '5.3.1';
+    const SCRIPT_VERSION = '5.6.0';
 
     const URL_ATENDIMENTO = "filaProvisionamento.php";
     const URL_CONTRATO_VOALLE = "authentication_contracts/contract_panel";
@@ -149,6 +152,266 @@
     }
 
     // =========================================================================
+    // TEMA (CLARO/ESCURO)
+    // =========================================================================
+    const temaState = {
+        _tema: 'claro',
+        get tema() { return this._tema; },
+        set tema(valor) {
+            this._tema = valor;
+            storage.set('osir_tema', valor);
+            aplicarTema(valor);
+        }
+    };
+
+    // Inicializa do localStorage
+    const temaSalvo = storage.get('osir_tema');
+    if (temaSalvo !== null && (temaSalvo === 'claro' || temaSalvo === 'escuro')) {
+        temaState._tema = temaSalvo;
+    }
+
+    // =========================================================================
+    // FUNÇÕES DE TEMA
+    // =========================================================================
+    function alternarTema() {
+        const novoTema = temaState.tema === 'claro' ? 'escuro' : 'claro';
+        temaState.tema = novoTema;
+
+        const btnTema = document.getElementById('osir-btn-tema');
+        if (btnTema) {
+            btnTema.textContent = novoTema === 'claro' ? '🌙' : '☀️';
+            btnTema.title = novoTema === 'claro' ? 'Tema Escuro' : 'Tema Claro';
+        }
+
+        const configWindow = document.getElementById('osir-config-complement-window');
+        if (configWindow) {
+            aplicarTemaConfig(novoTema);
+        }
+    }
+
+    function aplicarTema(tema) {
+        const janela = document.getElementById('osir-floating-window');
+        if (!janela) return;
+
+        if (tema === 'escuro') {
+            janela.style.background = '#1a1a2e';
+            janela.style.color = '#e2e8f0';
+            janela.style.borderColor = '#6d28d9';
+            janela.style.boxShadow = '0 8px 32px rgba(0,0,0,0.6)';
+
+            janela.querySelectorAll('.osir-header-drag').forEach(el => {
+                el.style.background = 'linear-gradient(135deg, #2d2d44 0%, #1f1f35 100%)';
+                el.style.borderColor = '#3d3d5c';
+            });
+
+            janela.querySelectorAll('.osir-badge').forEach(el => {
+                el.style.background = 'linear-gradient(135deg, #2d2d44 0%, #1f1f35 100%)';
+                el.style.color = '#e2e8f0';
+                el.style.borderColor = '#4d4d6c';
+            });
+
+            janela.querySelectorAll('.osir-preview-texto').forEach(el => {
+                el.style.background = 'linear-gradient(135deg, #2d2d44 0%, #1f1f35 100%)';
+                el.style.color = '#e2e8f0';
+                el.style.borderColor = '#3d3d5c';
+            });
+
+            janela.querySelectorAll('span[style*="background: #f9fafb"]').forEach(el => {
+                el.style.background = '#2d2d44';
+                el.style.color = '#e2e8f0';
+                el.style.borderColor = '#3d3d5c';
+            });
+
+            janela.querySelectorAll('span[style*="color: #4b5563"]').forEach(el => {
+                el.style.color = '#9ca3af';
+            });
+
+            janela.querySelectorAll('span[style*="color: #1f2937"]').forEach(el => {
+                el.style.color = '#e2e8f0';
+            });
+
+            janela.querySelectorAll('div[style*="background: linear-gradient(135deg, #fef3c7"]').forEach(el => {
+                el.style.background = 'linear-gradient(135deg, #2d2d44 0%, #1f1f35 100%)';
+                el.style.color = '#e2e8f0';
+                el.style.borderColor = '#4d4d6c';
+            });
+
+            janela.querySelectorAll('div[style*="background: #f9fafb"]').forEach(el => {
+                el.style.background = '#2d2d44';
+                el.style.borderColor = '#3d3d5c';
+            });
+
+            janela.querySelectorAll('label[style*="color: #4b5563"]').forEach(el => {
+                el.style.color = '#9ca3af';
+            });
+
+            janela.querySelectorAll('div[style*="border-bottom: 1px solid #f3f4f6"]').forEach(el => {
+                el.style.borderBottomColor = '#3d3d5c';
+            });
+
+        } else {
+            janela.style.background = '#ffffff';
+            janela.style.color = '#1f2937';
+            janela.style.borderColor = '#8b5cf6';
+            janela.style.boxShadow = '0 8px 32px rgba(0,0,0,0.35)';
+
+            janela.querySelectorAll('.osir-header-drag').forEach(el => {
+                el.style.background = 'linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%)';
+                el.style.borderColor = '#d1d5db';
+            });
+
+            janela.querySelectorAll('.osir-badge').forEach(el => {
+                el.style.background = '';
+                el.style.color = '';
+                el.style.borderColor = '';
+            });
+
+            janela.querySelectorAll('.osir-preview-texto').forEach(el => {
+                el.style.background = 'linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%)';
+                el.style.color = '#1f2937';
+                el.style.borderColor = '#d1d5db';
+            });
+
+            janela.querySelectorAll('span[style*="background: #2d2d44"]').forEach(el => {
+                el.style.background = '#f9fafb';
+                el.style.color = '#1f2937';
+                el.style.borderColor = '#e5e7eb';
+            });
+
+            janela.querySelectorAll('span[style*="color: #9ca3af"]').forEach(el => {
+                el.style.color = '#4b5563';
+            });
+
+            janela.querySelectorAll('span[style*="color: #e2e8f0"]').forEach(el => {
+                el.style.color = '#1f2937';
+            });
+
+            janela.querySelectorAll('div[style*="background: linear-gradient(135deg, #2d2d44"]').forEach(el => {
+                el.style.background = 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)';
+                el.style.color = '#92400e';
+                el.style.borderColor = '#fcd34d';
+            });
+
+            janela.querySelectorAll('div[style*="background: #2d2d44"]').forEach(el => {
+                el.style.background = '#f9fafb';
+                el.style.borderColor = '#e5e7eb';
+            });
+
+            janela.querySelectorAll('label[style*="color: #9ca3af"]').forEach(el => {
+                el.style.color = '#4b5563';
+            });
+
+            janela.querySelectorAll('div[style*="border-bottom: 1px solid #3d3d5c"]').forEach(el => {
+                el.style.borderBottomColor = '#f3f4f6';
+            });
+        }
+    }
+
+    function aplicarTemaConfig(tema) {
+        const janela = document.getElementById('osir-config-complement-window');
+        if (!janela) return;
+
+        if (tema === 'escuro') {
+            janela.style.background = '#1a1a2e';
+            janela.style.color = '#e2e8f0';
+            janela.style.borderColor = '#6d28d9';
+            janela.style.boxShadow = '0 6px 24px rgba(0,0,0,0.6)';
+
+            janela.querySelectorAll('div[style*="background: linear-gradient(135deg, #f8fafc"]').forEach(el => {
+                el.style.background = 'linear-gradient(135deg, #2d2d44 0%, #1f1f35 100%)';
+                el.style.color = '#e2e8f0';
+                el.style.borderColor = '#3d3d5c';
+            });
+
+            janela.querySelectorAll('div[style*="background: #f9fafb"]').forEach(el => {
+                el.style.background = '#2d2d44';
+                el.style.borderColor = '#3d3d5c';
+            });
+
+            janela.querySelectorAll('div[style*="background: #f0f4ff"]').forEach(el => {
+                el.style.background = '#2d2d44';
+                el.style.borderColor = '#3d3d5c';
+                el.style.color = '#e2e8f0';
+            });
+
+            janela.querySelectorAll('span[style*="color: #1f2937"]').forEach(el => {
+                el.style.color = '#e2e8f0';
+            });
+
+            janela.querySelectorAll('#osir-preview-complement').forEach(el => {
+                el.style.background = 'linear-gradient(135deg, #2d2d44 0%, #1f1f35 100%)';
+                el.style.color = '#e2e8f0';
+                el.style.borderColor = '#3d3d5c';
+            });
+
+            janela.querySelectorAll('div[style*="border-bottom: 2px solid #e5e7eb"]').forEach(el => {
+                el.style.borderBottomColor = '#3d3d5c';
+            });
+
+        } else {
+            janela.style.background = '#ffffff';
+            janela.style.color = '#1f2937';
+            janela.style.borderColor = '#8b5cf6';
+            janela.style.boxShadow = '0 6px 24px rgba(139, 92, 246, 0.15)';
+
+            janela.querySelectorAll('div[style*="background: linear-gradient(135deg, #2d2d44"]').forEach(el => {
+                el.style.background = 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)';
+                el.style.color = '#1f2937';
+                el.style.borderColor = '#e2e8f0';
+            });
+
+            janela.querySelectorAll('div[style*="background: #2d2d44"]').forEach(el => {
+                el.style.background = '#f9fafb';
+                el.style.borderColor = '#e5e7eb';
+            });
+
+            janela.querySelectorAll('div[style*="background: #2d2d44"]').forEach(el => {
+                el.style.background = '#f0f4ff';
+                el.style.borderColor = '#d1d5db';
+                el.style.color = '#1f2937';
+            });
+
+            janela.querySelectorAll('span[style*="color: #e2e8f0"]').forEach(el => {
+                el.style.color = '#1f2937';
+            });
+
+            janela.querySelectorAll('#osir-preview-complement').forEach(el => {
+                el.style.background = 'linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%)';
+                el.style.color = '#1f2937';
+                el.style.borderColor = '#d1d5db';
+            });
+
+            janela.querySelectorAll('div[style*="border-bottom: 2px solid #3d3d5c"]').forEach(el => {
+                el.style.borderBottomColor = '#e5e7eb';
+            });
+        }
+    }
+
+    // =========================================================================
+    // FUNÇÃO PARA LIMPAR MAC ADDRESS
+    // =========================================================================
+    function limparMacAddress() {
+        const campoMac = document.getElementById('AuthenticationContractMac');
+        if (campoMac) {
+            if (campoMac.value && campoMac.value.trim() !== '') {
+                const valorAntigo = campoMac.value;
+                campoMac.value = '';
+                campoMac.dispatchEvent(new Event('input', { bubbles: true }));
+                campoMac.dispatchEvent(new Event('change', { bubbles: true }));
+                campoMac.dispatchEvent(new Event('blur', { bubbles: true }));
+                log(`✅ MAC Address limpo (era: ${valorAntigo})`);
+                return true;
+            } else {
+                log('ℹ️ Campo MAC já está vazio');
+                return false;
+            }
+        } else {
+            log('⚠️ Campo MAC não encontrado');
+            return false;
+        }
+    }
+
+    // =========================================================================
     // FUNÇÕES DA JANELA
     // =========================================================================
     function redimensionarJanela(deltaLargura, deltaAltura, deltaFonte) {
@@ -228,7 +491,9 @@
                 isDragging = true;
                 janela.style.cursor = 'grabbing';
                 janela.style.transition = 'none';
-                janela.style.boxShadow = '0 12px 48px rgba(0,0,0,0.4)';
+                janela.style.boxShadow = temaState.tema === 'escuro'
+                    ? '0 12px 48px rgba(0,0,0,0.8)'
+                    : '0 12px 48px rgba(0,0,0,0.4)';
             }
         }
 
@@ -237,7 +502,9 @@
                 isDragging = false;
                 janela.style.cursor = 'default';
                 janela.style.transition = 'width 0.3s ease, max-height 0.3s ease, box-shadow 0.3s ease';
-                janela.style.boxShadow = '0 8px 32px rgba(0,0,0,0.35)';
+                janela.style.boxShadow = temaState.tema === 'escuro'
+                    ? '0 8px 32px rgba(0,0,0,0.6)'
+                    : '0 8px 32px rgba(0,0,0,0.35)';
 
                 storage.setJSON('osir_janela_posicao', { x: xOffset, y: yOffset });
             }
@@ -630,7 +897,6 @@
         if (autenticaRB) partes.push("Autentica em uma RB");
         if (omada) partes.push("EAPs configurados no OMADA");
 
-        // 👇 CORREÇÃO: Agora usa splitter e portaSplitter recebidos como parâmetro
         if (splitter && splitter !== '' && splitter !== 'XX') {
             const portaSplitterFormatada = portaSplitter && portaSplitter !== '' && portaSplitter !== 'XX'
                 ? (/^\d+$/.test(portaSplitter) ? portaSplitter.padStart(2, '0') : portaSplitter)
@@ -674,7 +940,6 @@
             .trim();
     }
 
-    // Função para montar complemento da janela flutuante (usa dados do provisionamento)
     function montarComplemento(dados) {
         const tipoEquip = determinarTipoEquipamento(dados.tipoProvisionamento, dados.serial);
         const temTelefonia = dados.telefonia && dados.telefonia.temTelefonia === true;
@@ -714,7 +979,6 @@
             { id: 'tipoProvisionamento', valor: dados.tipoProvisionamento },
             { id: 'AuthenticationContractEquipmentUser', valor: dados.usuarioONU },
             { id: 'AuthenticationContractEquipmentPassword', valor: dados.senhaONU },
-            // 👇 ADICIONADO: Splitter e Porta Splitter
             { id: 'AuthenticationSplitterPortTitle', valor: dados.splitter },
             { id: 'AuthenticationSplitterPortPort', valor: dados.portaSplitter }
         ];
@@ -820,12 +1084,13 @@
         construirConteudoJanelaFlutuante(janela, dados, temTelefonia, complementoPreview);
         document.body.appendChild(janela);
         tornarJanelaArrastavel(janela);
+
+        setTimeout(() => aplicarTema(temaState.tema), 50);
     }
 
     function construirConteudoJanelaFlutuante(janela, dados, temTelefonia, complementoPreview) {
         janela.innerHTML = '';
 
-        // CABEÇALHO
         const header = document.createElement('div');
         header.className = 'osir-header-drag';
         header.style.cssText = `
@@ -859,6 +1124,25 @@
         const grupoControles = document.createElement('div');
         grupoControles.className = 'osir-no-drag';
         grupoControles.style.cssText = `display: flex; align-items: center; gap: 4px;`;
+
+        const btnTema = document.createElement('button');
+        btnTema.id = 'osir-btn-tema';
+        btnTema.textContent = temaState.tema === 'claro' ? '🌙' : '☀️';
+        btnTema.title = temaState.tema === 'claro' ? 'Tema Escuro' : 'Tema Claro';
+        btnTema.style.cssText = `
+            padding: 3px 8px;
+            background: #e5e7eb;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            line-height: 1.2;
+            color: #374151;
+            transition: all 0.2s ease;
+        `;
+        btnTema.onclick = alternarTema;
+        btnTema.onmouseover = () => { btnTema.style.transform = 'scale(1.05)'; };
+        btnTema.onmouseout = () => { btnTema.style.transform = 'scale(1)'; };
 
         const btnMenos = criarBotaoEstilizado('−', '#e5e7eb', () => {
             redimensionarJanela(-CONFIG_JANELA.passo, -CONFIG_JANELA.passo, -1);
@@ -904,6 +1188,7 @@
             currentJanelaFlutuanteDados = null;
         }, { background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)', border: '1px solid #dc2626', padding: '3px 8px', fontSize: '12px', lineHeight: '1.2', boxShadow: '0 1px 3px rgba(239,68,68,0.3)' });
 
+        grupoControles.appendChild(btnTema);
         grupoControles.appendChild(btnMenos);
         grupoControles.appendChild(sizeDisplay);
         grupoControles.appendChild(btnMais);
@@ -915,7 +1200,6 @@
         header.appendChild(grupoControles);
         janela.appendChild(header);
 
-        // BADGE
         const badge = document.createElement('div');
         badge.className = 'osir-badge';
         badge.style.cssText = `
@@ -936,7 +1220,6 @@
         badge.textContent = badgeTexto;
         janela.appendChild(badge);
 
-        // FONTE DOS DADOS
         const fonteInfo = document.createElement('div');
         fonteInfo.style.cssText = `
             background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
@@ -952,11 +1235,9 @@
         fonteInfo.textContent = '🟡 Dados do Provisionamento';
         janela.appendChild(fonteInfo);
 
-        // CONTEÚDO
         const conteudo = document.createElement('div');
         conteudo.style.cssText = `font-size: ${estadoJanela.fonte}px;`;
 
-        // CHECKBOX WIFI PRO
         const wifiProContainer = document.createElement('div');
         wifiProContainer.style.cssText = `
             display: flex;
@@ -1010,7 +1291,6 @@
         wifiProContainer.appendChild(label);
         conteudo.appendChild(wifiProContainer);
 
-        // CAMPOS
         function criarLinhaCampo(labelText, valorText, comBotaoCopiar = false) {
             const linha = document.createElement('div');
             linha.style.cssText = `
@@ -1125,7 +1405,6 @@
             }
         }
 
-        // COMPLEMENTO
         const previewLabel = document.createElement('div');
         previewLabel.style.cssText = `
             margin-top: 10px;
@@ -1156,10 +1435,9 @@
         conteudo.appendChild(previewTexto);
 
         // =====================================================================
-        // BOTÃO SINCRONIZAR (ATUALIZADO COM SPLITTER)
+        // BOTÃO SINCRONIZAR (COM LIMPEZA DO MAC)
         // =====================================================================
         const btnSincronizar = criarBotaoEstilizado('🔄 Sincronizar', '#8b5cf6', function() {
-            // 1. PEGA OS DADOS DA JANELA FLUTUANTE
             const dadosDaCaixinha = {
                 serial: dados.serial || "XX",
                 ssid: dados.ssid || "XX",
@@ -1185,7 +1463,6 @@
                 wifiPro: wifiProState.ativo
             };
 
-            // 2. CAPTURA SPLITTER DO FORMULÁRIO (se existir)
             const campoSplitter = document.getElementById('AuthenticationSplitterPortTitle');
             const campoPortaSplitter = document.getElementById('AuthenticationSplitterPortPort');
 
@@ -1201,15 +1478,22 @@
                 dadosDaCaixinha.portaSplitter = "XX";
             }
 
-            // 3. MONTA A STRING OSIRDATA
             const stringSecreta = montarStringOSIRDATA(dadosDaCaixinha);
 
-            // 4. COPIA PRO CLIPBOARD E PREENCHE O FORMULÁRIO
             navigator.clipboard.writeText(stringSecreta).then(() => {
-                // Isso faz as DUAS coisas: copia e preenche
+                // 1. Preenche os campos do formulário
                 preencherFormularioContrato(dadosDaCaixinha);
 
-                // Feedback visual
+                // 👇 2. LIMPA O MAC ADDRESS
+                const campoMac = document.getElementById('AuthenticationContractMac');
+                if (campoMac && campoMac.value && campoMac.value.trim() !== '') {
+                    campoMac.value = '';
+                    campoMac.dispatchEvent(new Event('input', { bubbles: true }));
+                    campoMac.dispatchEvent(new Event('change', { bubbles: true }));
+                    campoMac.dispatchEvent(new Event('blur', { bubbles: true }));
+                    log('✅ MAC Address limpo ao sincronizar');
+                }
+
                 this.textContent = '✅ OK';
                 this.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
                 setTimeout(() => {
@@ -1217,8 +1501,18 @@
                     this.style.background = 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)';
                 }, TIMINGS.FEEDBACK_BOTAO_TIMEOUT);
             }).catch(() => {
-                // Se falhar, tenta só preencher o formulário
                 preencherFormularioContrato(dadosDaCaixinha);
+
+                // 👇 Tenta limpar o MAC mesmo se o clipboard falhar
+                const campoMac = document.getElementById('AuthenticationContractMac');
+                if (campoMac && campoMac.value && campoMac.value.trim() !== '') {
+                    campoMac.value = '';
+                    campoMac.dispatchEvent(new Event('input', { bubbles: true }));
+                    campoMac.dispatchEvent(new Event('change', { bubbles: true }));
+                    campoMac.dispatchEvent(new Event('blur', { bubbles: true }));
+                    log('✅ MAC Address limpo ao sincronizar (fallback)');
+                }
+
                 this.textContent = '⚠️ Sem Clipboard';
                 setTimeout(() => {
                     this.textContent = '🔄 Sincronizar';
@@ -1229,17 +1523,14 @@
         conteudo.appendChild(btnSincronizar);
 
         // =====================================================================
-        // BOTÃO COMPLEMENTO (ATUALIZADO COM SPLITTER)
+        // BOTÃO COMPLEMENTO
         // =====================================================================
         const btnGerarComplemento = criarBotaoEstilizado('📝 Complemento', '#e11d48', function() {
-            // Pega os dados atuais da janela
             const dadosAtuais = currentJanelaFlutuanteDados || dados;
 
-            // Captura splitter do formulário
             const campoSplitter = document.getElementById('AuthenticationSplitterPortTitle');
             const campoPortaSplitter = document.getElementById('AuthenticationSplitterPortPort');
 
-            // Atualiza os dados com splitter do formulário
             if (campoSplitter && campoSplitter.value && campoSplitter.value.trim() !== '') {
                 dadosAtuais.splitter = campoSplitter.value.trim();
             }
@@ -1247,10 +1538,8 @@
                 dadosAtuais.portaSplitter = campoPortaSplitter.value.trim();
             }
 
-            // Gera o complemento com splitter
             const complementoAtualizado = montarComplemento(dadosAtuais);
 
-            // Preenche o campo complemento
             const inputComplementar = getCachedElement('AuthenticationContractComplement');
             if (inputComplementar) {
                 inputComplementar.value = complementoAtualizado;
@@ -1258,7 +1547,6 @@
                 inputComplementar.dispatchEvent(new Event('change', { bubbles: true }));
             }
 
-            // Atualiza o preview na janela
             const previewTexto = janela.querySelector('.osir-preview-texto');
             if (previewTexto) previewTexto.textContent = complementoAtualizado;
 
@@ -1276,6 +1564,7 @@
 
     function atualizarConteudoJanelaFlutuante(janela, dados, temTelefonia, complementoPreview) {
         construirConteudoJanelaFlutuante(janela, dados, temTelefonia, complementoPreview);
+        setTimeout(() => aplicarTema(temaState.tema), 50);
     }
 
     // =========================================================================
@@ -1432,10 +1721,23 @@
         }
     }
 
+    // =====================================================================
+    // BOTÃO ATUALIZAR (JANELA ESQUERDA) COM LIMPEZA DO MAC
+    // =====================================================================
     function atualizarComplemento() {
         preencherVlanEPortaWeb();
         preencherComplementoNoFormulario();
         atualizarPreviewConfig();
+
+        // 👇 LIMPA O MAC ADDRESS
+        const campoMac = document.getElementById('AuthenticationContractMac');
+        if (campoMac && campoMac.value && campoMac.value.trim() !== '') {
+            campoMac.value = '';
+            campoMac.dispatchEvent(new Event('input', { bubbles: true }));
+            campoMac.dispatchEvent(new Event('change', { bubbles: true }));
+            campoMac.dispatchEvent(new Event('blur', { bubbles: true }));
+            log('✅ MAC Address limpo ao atualizar (janela esquerda)');
+        }
 
         const btn = document.querySelector('#osir-config-complement-window button:first-of-type');
         if (btn) {
@@ -1482,6 +1784,16 @@
         preencherVlanEPortaWeb();
         preencherComplementoNoFormulario();
         atualizarPreviewConfig();
+
+        // 👇 LIMPA O MAC ADDRESS
+        const campoMac = document.getElementById('AuthenticationContractMac');
+        if (campoMac && campoMac.value && campoMac.value.trim() !== '') {
+            campoMac.value = '';
+            campoMac.dispatchEvent(new Event('input', { bubbles: true }));
+            campoMac.dispatchEvent(new Event('change', { bubbles: true }));
+            campoMac.dispatchEvent(new Event('blur', { bubbles: true }));
+            log('✅ MAC Address limpo ao gerar automático');
+        }
 
         const btn = document.querySelector('#osir-config-complement-window button:nth-child(3)');
         if (btn) {
@@ -1884,6 +2196,8 @@
 
         menuContainer.parentNode.insertBefore(janela, menuContainer.nextSibling);
         setTimeout(atualizarPreviewConfig, 100);
+
+        setTimeout(() => aplicarTemaConfig(temaState.tema), 50);
     }
 
     // =========================================================================
@@ -2249,6 +2563,8 @@
     log('✅ VLAN e Porta Web preenchem campos do contrato na janela esquerda');
     log('✅ Splitter e Porta Splitter capturados no complemento');
     log('✅ Sincronizar mantém dualidade: clipboard + formulário');
+    log('✅ Tema Claro/Escuro adicionado (🌙/☀️)');
+    log('✅ MAC Address limpo ao clicar em Sincronizar ou Atualizar');
     log('✅ Cache de DOM, storage seguro, funções unificadas');
     log('✅ Cleanup de intervals/observers no beforeunload');
 
