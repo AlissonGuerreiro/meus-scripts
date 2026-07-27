@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Osir - Assistente de Provisionamento
 // @namespace    http://tampermonkey.net/
-// @version      5.3.0
-// @description  CORRIGIDO: VLAN 2200 (STL_CE_3/4, TTN_LAN, GAR, ROS) + Normalização STLDC→DC, PTN_NOVA→PTN + Botão 📋 Copiar PE+Slot+Porta + Remoção Complementar + Preparar Dados no lugar do Chamado + VLAN e Porta Web preenchem campos do contrato
+// @version      5.3.1
+// @description  CORRIGIDO: Splitter no complemento + Sincronizar mantendo dualidade
 // @author       Alisson Guerreiro
 // @match        *://*.osirnet.com.br/*
 // @match        *://*.osir.net.br/*
@@ -18,7 +18,7 @@
     // CONFIGURAÇÕES GERAIS
     // =========================================================================
     const DEBUG = true;
-    const SCRIPT_VERSION = '5.3.0';
+    const SCRIPT_VERSION = '5.3.1';
 
     const URL_ATENDIMENTO = "filaProvisionamento.php";
     const URL_CONTRATO_VOALLE = "authentication_contracts/contract_panel";
@@ -78,7 +78,7 @@
     // CACHE DE ELEMENTOS DO DOM
     // =========================================================================
     const DOM_CACHE = new Map();
-    const DOM_CACHE_TTL = 5000; // 5 segundos
+    const DOM_CACHE_TTL = 5000;
 
     function getCachedElement(id) {
         const cached = DOM_CACHE.get(id);
@@ -405,11 +405,9 @@
     }
 
     function calcularVlanOsir(pontoAcesso, slotStr, portaStr) {
-        // Primeiro verifica se é VLAN especial (2200)
         const vlanEspecial = calcularVlanEspecial(pontoAcesso);
         if (vlanEspecial) return vlanEspecial;
 
-        // Caso contrário, cálculo padrão
         return calcularVlanPadrao(slotStr, portaStr);
     }
 
@@ -424,7 +422,6 @@
         const tipoLower = (tipoProvisionamento || "").toLowerCase().trim();
         const serialUpper = (serial || "").toUpperCase();
 
-        // Determinar fabricante pelo serial
         let fabricante = '';
         if (serialUpper.startsWith("4857") || serialUpper.startsWith("HWTC")) {
             fabricante = 'Huawei';
@@ -438,13 +435,8 @@
             return 'Equipamento Desconhecido';
         }
 
-        // Raisecom sempre retorna Router
         if (fabricante === 'Raisecom') return 'Raisecom Router';
-
-        // ZTE (exceto variantes específicas) retorna Bridge
         if (fabricante === 'ZTE') return 'ZTE Bridge';
-
-        // Huawei: depende do tipo
         if (fabricante === 'Huawei') {
             return tipoLower === 'b' ? 'Huawei Bridge' : 'Huawei Router';
         }
@@ -471,16 +463,13 @@
     function formatarPESlotPorta(dados) {
         let pe = dados.pontoAcesso || dados.olt || '';
 
-        // Extrai o nome do PE se estiver no formato "REG XX - CIDADE - PE"
         if (pe.includes(' - ')) {
             const partes = pe.split(' - ');
             pe = partes[partes.length - 1].trim();
         }
 
-        // Normaliza o nome do PE
         pe = normalizarNomePE(pe);
 
-        // Remove prefixos e underscores para exibição
         if (pe.includes('STL_CE_')) {
             pe = pe.replace('STL_', '').replace('_', ' ');
         } else if (pe.includes('JUN_')) {
@@ -492,7 +481,6 @@
         let slot = dados.slot || '0';
         let porta = dados.porta || '0';
 
-        // Formata apenas se for numérico
         if (/^\d+$/.test(slot)) {
             slot = String(slot).padStart(2, '0');
         }
@@ -594,7 +582,6 @@
             if (match) dados.contrato = match[1].trim();
         }
 
-        // Extrai o pontoAcesso do nomeOLT
         if (dados.nomeOLT) {
             const partes = dados.nomeOLT.split(' - ');
             if (partes.length >= 3) {
@@ -643,8 +630,9 @@
         if (autenticaRB) partes.push("Autentica em uma RB");
         if (omada) partes.push("EAPs configurados no OMADA");
 
-        if (splitter && splitter !== '') {
-            const portaSplitterFormatada = portaSplitter && portaSplitter !== ''
+        // 👇 CORREÇÃO: Agora usa splitter e portaSplitter recebidos como parâmetro
+        if (splitter && splitter !== '' && splitter !== 'XX') {
+            const portaSplitterFormatada = portaSplitter && portaSplitter !== '' && portaSplitter !== 'XX'
                 ? (/^\d+$/.test(portaSplitter) ? portaSplitter.padStart(2, '0') : portaSplitter)
                 : 'XX';
             partes.push(`Splitter: ${splitter} Porta: ${portaSplitterFormatada}`);
@@ -725,7 +713,10 @@
             { id: 'AuthenticationContractEquipmentPort', valor: dados.portaWeb },
             { id: 'tipoProvisionamento', valor: dados.tipoProvisionamento },
             { id: 'AuthenticationContractEquipmentUser', valor: dados.usuarioONU },
-            { id: 'AuthenticationContractEquipmentPassword', valor: dados.senhaONU }
+            { id: 'AuthenticationContractEquipmentPassword', valor: dados.senhaONU },
+            // 👇 ADICIONADO: Splitter e Porta Splitter
+            { id: 'AuthenticationSplitterPortTitle', valor: dados.splitter },
+            { id: 'AuthenticationSplitterPortPort', valor: dados.portaSplitter }
         ];
 
         mapeamento.forEach(({ id, valor }) => {
@@ -800,7 +791,6 @@
 
         const complementoPreview = montarComplemento(dados);
 
-        // Se a janela já existe, apenas atualiza o conteúdo
         if (janelaExistente) {
             atualizarConteudoJanelaFlutuante(janelaExistente, dados, temTelefonia, complementoPreview);
             return;
@@ -833,7 +823,6 @@
     }
 
     function construirConteudoJanelaFlutuante(janela, dados, temTelefonia, complementoPreview) {
-        // Limpa conteúdo existente
         janela.innerHTML = '';
 
         // CABEÇALHO
@@ -871,13 +860,11 @@
         grupoControles.className = 'osir-no-drag';
         grupoControles.style.cssText = `display: flex; align-items: center; gap: 4px;`;
 
-        // Botão -
         const btnMenos = criarBotaoEstilizado('−', '#e5e7eb', () => {
             redimensionarJanela(-CONFIG_JANELA.passo, -CONFIG_JANELA.passo, -1);
             salvarPreferencias();
         }, { color: '#374151', border: '1px solid #d1d5db', padding: '3px 8px', fontSize: '13px', lineHeight: '1.2' });
 
-        // Size display
         const sizeDisplay = document.createElement('span');
         sizeDisplay.id = 'osir-size-display';
         sizeDisplay.textContent = `${estadoJanela.largura}×${estadoJanela.altura}`;
@@ -894,18 +881,15 @@
             border: 1px solid #e5e7eb;
         `;
 
-        // Botão +
         const btnMais = criarBotaoEstilizado('+', '#e5e7eb', () => {
             redimensionarJanela(CONFIG_JANELA.passo, CONFIG_JANELA.passo, 1);
             salvarPreferencias();
         }, { color: '#374151', border: '1px solid #d1d5db', padding: '3px 8px', fontSize: '13px', lineHeight: '1.2' });
 
-        // Separador
         const sep = document.createElement('span');
         sep.textContent = '|';
         sep.style.cssText = `color: #d1d5db; padding: 0 3px; font-weight: 300;`;
 
-        // Botão reset
         const btnReset = criarBotaoEstilizado('↺', '#e5e7eb', () => {
             estadoJanela.largura = CONFIG_JANELA.larguraPadrao;
             estadoJanela.altura = CONFIG_JANELA.alturaPadrao;
@@ -915,7 +899,6 @@
             if (janela.resetPosition) janela.resetPosition();
         }, { color: '#374151', border: '1px solid #d1d5db', padding: '3px 8px', fontSize: '13px', lineHeight: '1.2' });
 
-        // Botão fechar
         const btnFechar = criarBotaoEstilizado('✕', '#ef4444', () => {
             janela.remove();
             currentJanelaFlutuanteDados = null;
@@ -1172,8 +1155,11 @@
         previewTexto.textContent = complementoPreview;
         conteudo.appendChild(previewTexto);
 
-        // BOTÕES
+        // =====================================================================
+        // BOTÃO SINCRONIZAR (ATUALIZADO COM SPLITTER)
+        // =====================================================================
         const btnSincronizar = criarBotaoEstilizado('🔄 Sincronizar', '#8b5cf6', function() {
+            // 1. PEGA OS DADOS DA JANELA FLUTUANTE
             const dadosDaCaixinha = {
                 serial: dados.serial || "XX",
                 ssid: dados.ssid || "XX",
@@ -1187,9 +1173,9 @@
                 olt: dados.olt || "N/A",
                 tipoProvisionamento: dados.tipoProvisionamento || "",
                 portaWeb: dados.portaWeb,
-                splitter: "XX",
-                portaSplitter: "XX",
                 sinal: dados.sinal || "",
+                usuarioONU: dados.usuarioONU || "",
+                senhaONU: dados.senhaONU || "",
                 telefonia: {
                     temTelefonia: temTelefonia,
                     numero: dados.telefonia?.numero || '',
@@ -1199,12 +1185,41 @@
                 wifiPro: wifiProState.ativo
             };
 
+            // 2. CAPTURA SPLITTER DO FORMULÁRIO (se existir)
+            const campoSplitter = document.getElementById('AuthenticationSplitterPortTitle');
+            const campoPortaSplitter = document.getElementById('AuthenticationSplitterPortPort');
+
+            if (campoSplitter && campoSplitter.value && campoSplitter.value.trim() !== '') {
+                dadosDaCaixinha.splitter = campoSplitter.value.trim();
+            } else {
+                dadosDaCaixinha.splitter = "XX";
+            }
+
+            if (campoPortaSplitter && campoPortaSplitter.value && campoPortaSplitter.value.trim() !== '') {
+                dadosDaCaixinha.portaSplitter = campoPortaSplitter.value.trim();
+            } else {
+                dadosDaCaixinha.portaSplitter = "XX";
+            }
+
+            // 3. MONTA A STRING OSIRDATA
             const stringSecreta = montarStringOSIRDATA(dadosDaCaixinha);
 
+            // 4. COPIA PRO CLIPBOARD E PREENCHE O FORMULÁRIO
             navigator.clipboard.writeText(stringSecreta).then(() => {
+                // Isso faz as DUAS coisas: copia e preenche
+                preencherFormularioContrato(dadosDaCaixinha);
+
+                // Feedback visual
                 this.textContent = '✅ OK';
                 this.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
+                setTimeout(() => {
+                    this.textContent = '🔄 Sincronizar';
+                    this.style.background = 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)';
+                }, TIMINGS.FEEDBACK_BOTAO_TIMEOUT);
+            }).catch(() => {
+                // Se falhar, tenta só preencher o formulário
                 preencherFormularioContrato(dadosDaCaixinha);
+                this.textContent = '⚠️ Sem Clipboard';
                 setTimeout(() => {
                     this.textContent = '🔄 Sincronizar';
                     this.style.background = 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)';
@@ -1213,14 +1228,37 @@
         }, { width: '100%', marginTop: '8px', fontSize: `${Math.round(estadoJanela.fonte * 0.9)}px`, border: '1px solid #7c3aed' });
         conteudo.appendChild(btnSincronizar);
 
+        // =====================================================================
+        // BOTÃO COMPLEMENTO (ATUALIZADO COM SPLITTER)
+        // =====================================================================
         const btnGerarComplemento = criarBotaoEstilizado('📝 Complemento', '#e11d48', function() {
-            const complementoAtualizado = montarComplemento(dados);
+            // Pega os dados atuais da janela
+            const dadosAtuais = currentJanelaFlutuanteDados || dados;
+
+            // Captura splitter do formulário
+            const campoSplitter = document.getElementById('AuthenticationSplitterPortTitle');
+            const campoPortaSplitter = document.getElementById('AuthenticationSplitterPortPort');
+
+            // Atualiza os dados com splitter do formulário
+            if (campoSplitter && campoSplitter.value && campoSplitter.value.trim() !== '') {
+                dadosAtuais.splitter = campoSplitter.value.trim();
+            }
+            if (campoPortaSplitter && campoPortaSplitter.value && campoPortaSplitter.value.trim() !== '') {
+                dadosAtuais.portaSplitter = campoPortaSplitter.value.trim();
+            }
+
+            // Gera o complemento com splitter
+            const complementoAtualizado = montarComplemento(dadosAtuais);
+
+            // Preenche o campo complemento
             const inputComplementar = getCachedElement('AuthenticationContractComplement');
             if (inputComplementar) {
                 inputComplementar.value = complementoAtualizado;
                 inputComplementar.dispatchEvent(new Event('input', { bubbles: true }));
                 inputComplementar.dispatchEvent(new Event('change', { bubbles: true }));
             }
+
+            // Atualiza o preview na janela
             const previewTexto = janela.querySelector('.osir-preview-texto');
             if (previewTexto) previewTexto.textContent = complementoAtualizado;
 
@@ -1237,7 +1275,6 @@
     }
 
     function atualizarConteudoJanelaFlutuante(janela, dados, temTelefonia, complementoPreview) {
-        // Apenas reconstrói o conteúdo, mantendo a posição
         construirConteudoJanelaFlutuante(janela, dados, temTelefonia, complementoPreview);
     }
 
@@ -1273,7 +1310,7 @@
     }
 
     // =========================================================================
-    // JANELA DA ESQUERDA (CONFIGURAÇÃO) - REFATORADA
+    // JANELA DA ESQUERDA (CONFIGURAÇÃO)
     // =========================================================================
 
     function getTipoProvisionamentoPorModelo(modeloLabel) {
@@ -1446,7 +1483,6 @@
         preencherComplementoNoFormulario();
         atualizarPreviewConfig();
 
-        // Feedback visual
         const btn = document.querySelector('#osir-config-complement-window button:nth-child(3)');
         if (btn) {
             btn.textContent = '✅ OK';
@@ -1457,13 +1493,11 @@
             }, TIMINGS.FEEDBACK_BOTAO_TIMEOUT);
         }
 
-        // Atualizar checkboxes
         const wifiCheck = document.getElementById('osir-wifi-pro-check');
         const zteCheck = document.getElementById('osir-autentica-zte-check');
         if (wifiCheck) wifiCheck.checked = wifiProState.ativo;
         if (zteCheck) zteCheck.checked = precisaZTE;
 
-        // Atualizar modelo selecionado
         const modelosMap = {
             'Huawei Bridge': 'modelo-huawei-bridge',
             'ZTE Bridge': 'modelo-zte-bridge',
@@ -1542,7 +1576,6 @@
             transition: all 0.3s ease;
         `;
 
-        // Header
         const header = document.createElement('div');
         header.style.cssText = `
             display: flex;
@@ -1580,7 +1613,6 @@
         header.appendChild(btnFechar);
         janela.appendChild(header);
 
-        // Info do contrato
         const infoContrato = document.createElement('div');
         infoContrato.style.cssText = `
             background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
@@ -1596,7 +1628,6 @@
         `;
         janela.appendChild(infoContrato);
 
-        // Modelos
         const modelosLabel = document.createElement('div');
         modelosLabel.style.cssText = `
             font-weight: 700;
@@ -1671,7 +1702,6 @@
 
         janela.appendChild(modelosContainer);
 
-        // Opções
         const opcoesLabel = document.createElement('div');
         opcoesLabel.style.cssText = `
             font-weight: 700;
@@ -1741,7 +1771,6 @@
 
         janela.appendChild(opcoesContainer);
 
-        // Info VLAN e Porta Web
         const infoContainer = document.createElement('div');
         infoContainer.style.cssText = `
             background: #f0f4ff;
@@ -1759,7 +1788,6 @@
         `;
         janela.appendChild(infoContainer);
 
-        // Preview
         const previewLabel = document.createElement('div');
         previewLabel.style.cssText = `
             font-weight: 700;
@@ -1791,7 +1819,6 @@
         previewBox.textContent = 'Selecione um modelo...';
         janela.appendChild(previewBox);
 
-        // Botões
         const botoesContainer = document.createElement('div');
         botoesContainer.style.cssText = 'display: flex; gap: 4px; margin-bottom: 8px; flex-wrap: wrap;';
 
@@ -1809,7 +1836,6 @@
 
         janela.appendChild(botoesContainer);
 
-        // Atalhos
         const atalhosLabel = document.createElement('div');
         atalhosLabel.style.cssText = `
             font-weight: 700;
@@ -2002,7 +2028,6 @@
 
         window.addEventListener('beforeunload', () => clearInterval(intervaloInjecaoJanelaEsquerda));
 
-        // DETECÇÃO DE SALVAMENTO
         function obterIdContratoAtual() {
             const menu = document.querySelector('.contract-menu');
             if (menu) {
@@ -2222,6 +2247,8 @@
     log('✅ Botão Complementar removido');
     log('✅ Botão Preparar Dados substituiu o Chamado');
     log('✅ VLAN e Porta Web preenchem campos do contrato na janela esquerda');
+    log('✅ Splitter e Porta Splitter capturados no complemento');
+    log('✅ Sincronizar mantém dualidade: clipboard + formulário');
     log('✅ Cache de DOM, storage seguro, funções unificadas');
     log('✅ Cleanup de intervals/observers no beforeunload');
 
