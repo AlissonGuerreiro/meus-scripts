@@ -9,8 +9,8 @@
 // @run-at       document-end
 // @homepage     https://github.com/AlissonGuerreiro/meus-scripts
 // @supportURL   https://github.com/AlissonGuerreiro/meus-scripts/issues
-// @downloadURL  https://raw.githubusercontent.com/AlissonGuerreiro/meus-scripts/main/osirnet-painel.user.js
-// @updateURL    https://raw.githubusercontent.com/AlissonGuerreiro/meus-scripts/main/osirnet-painel.user.js
+// @downloadURL  https://raw.githubusercontent.com/AlissonGuerreiro/meus-scripts/main/Osir%20Aproprias.user.js
+// @updateURL    https://raw.githubusercontent.com/AlissonGuerreiro/meus-scripts/main/Osir%20Aproprias.user.js
 // ==/UserScript==
 
 (function() {
