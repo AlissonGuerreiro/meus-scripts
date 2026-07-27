@@ -1,10 +1,10 @@
 // ==UserScript==
 // @name         Osir - Aproprias
 // @namespace    https://github.com/AlissonGuerreiro/meus-scripts
-// @version      7.1
+// @version      7.0
 // @description  Painel com loop, play, pause - Versão Super Rápida (0.5s)
 // @author       AlissonGuerreiro
-// @match        *://*.osirnet.com.br/*
+// @match        https://erp.osirnet.com.br/ui/*/legacy/operations/*
 // @grant        none
 // @run-at       document-end
 // @homepage     https://github.com/AlissonGuerreiro/meus-scripts
@@ -16,29 +16,13 @@
 (function() {
     'use strict';
 
-    // ===== CONFIGURAÇÕES =====
-    const DEBUG = true;
+    // ===== CONFIGURAÇÕES SUPER RÁPIDAS =====
     const DELAYS = {
         APOS_SELECIONAR: 1000,
         APOS_CLICAR: 1000,
-        APOS_CONFIRMAR: 1200,
-        APOS_FALHA: 1500
+        APOS_CONFIRMAR: 1200
     };
     const DELAY_ENTRE_LOOPS = 2200;
-    const MAX_TENTATIVAS_POR_APROPRIACAO = 3;
-
-    // ===== FUNÇÕES UTILITÁRIAS =====
-    function log(...args) {
-        if (DEBUG) console.log(...args);
-    }
-
-    function logError(...args) {
-        if (DEBUG) console.error(...args);
-    }
-
-    function delay(ms) {
-        return new Promise(resolve => setTimeout(resolve, ms));
-    }
 
     // ===== VARIÁVEIS DE CONTROLE =====
     let executando = false;
@@ -46,33 +30,9 @@
     let parar = false;
     let contador = 0;
     let totalDesejado = 0;
-    let painelCriado = false;
-
-    // ===== ESTILOS COMPARTILHADOS DOS BOTÕES =====
-    const ESTILO_BOTAO_BASE = {
-        flex: '1',
-        padding: '8px 12px',
-        color: 'white',
-        border: 'none',
-        borderRadius: '6px',
-        fontWeight: 'bold',
-        fontSize: '12px',
-        cursor: 'pointer',
-        transition: 'all 0.3s ease'
-    };
-
-    function criarBotao(texto, corFundo, corHover) {
-        const botao = document.createElement('button');
-        Object.assign(botao.style, ESTILO_BOTAO_BASE, { backgroundColor: corFundo });
-        botao.textContent = texto;
-        botao.onmouseover = () => botao.style.backgroundColor = corHover;
-        botao.onmouseout = () => botao.style.backgroundColor = corFundo;
-        return botao;
-    }
 
     function iniciarPainel() {
-        // Evita criação duplicada
-        if (painelCriado || document.getElementById('meu-painel-automacao')) return;
+        if (document.getElementById('meu-painel-automacao')) return;
         if (!document.body) return;
 
         if (window.self === window.top && document.querySelectorAll('iframe').length > 0) {
@@ -82,59 +42,49 @@
         const tabelaExiste = document.getElementById('assignmentTasks') || document.querySelector('td');
         if (!tabelaExiste) return;
 
-        painelCriado = true;
-
         // ===== CRIA O PAINEL =====
         const painel = document.createElement('div');
         painel.id = 'meu-painel-automacao';
-        Object.assign(painel.style, {
-            position: 'fixed',
-            bottom: '250px',
-            left: '10px',
-            zIndex: '9999999',
-            background: 'white',
-            borderRadius: '12px',
-            padding: '8px 10px',
-            boxShadow: '0 4px 25px rgba(0,0,0,0.3)',
-            fontFamily: 'Arial, sans-serif',
-            fontSize: '13px',
-            width: '220px',
-            border: '2px solid #1a237e',
-            cursor: 'move',
-            userSelect: 'none'
-        });
+        painel.style.position = 'fixed';
+        painel.style.bottom = '250px';
+        painel.style.left = '10px';
+        painel.style.zIndex = '9999999';
+        painel.style.background = 'white';
+        painel.style.borderRadius = '12px';
+        painel.style.padding = '8px 10px';
+        painel.style.boxShadow = '0 4px 25px rgba(0,0,0,0.3)';
+        painel.style.fontFamily = 'Arial, sans-serif';
+        painel.style.fontSize = '13px';
+        painel.style.width = '220px';
+        painel.style.border = '2px solid #1a237e';
+        painel.style.cursor = 'move';
+        painel.style.userSelect = 'none';
 
         // ===== TÍTULO =====
         const titulo = document.createElement('div');
-        titulo.textContent = '☰ Arraste este Painel';
-        Object.assign(titulo.style, {
-            fontWeight: 'bold',
-            marginBottom: '12px',
-            color: '#1a237e',
-            fontSize: '12px',
-            textAlign: 'center',
-            borderBottom: '1px solid #e0e0e0',
-            paddingBottom: '6px'
-        });
+        titulo.innerText = '☰ Arraste este Painel';
+        titulo.style.fontWeight = 'bold';
+        titulo.style.marginBottom = '12px';
+        titulo.style.color = '#1a237e';
+        titulo.style.fontSize = '12px';
+        titulo.style.textAlign = 'center';
+        titulo.style.borderBottom = '1px solid #e0e0e0';
+        titulo.style.paddingBottom = '6px';
         painel.appendChild(titulo);
 
         // ===== CONFIGURAÇÕES =====
         const configDiv = document.createElement('div');
-        Object.assign(configDiv.style, {
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            marginBottom: '10px'
-        });
+        configDiv.style.display = 'flex';
+        configDiv.style.alignItems = 'center';
+        configDiv.style.gap = '8px';
+        configDiv.style.marginBottom = '10px';
 
         const labelLoop = document.createElement('label');
-        labelLoop.textContent = 'Loops:';
-        Object.assign(labelLoop.style, {
-            fontWeight: '600',
-            fontSize: '12px',
-            color: '#333',
-            minWidth: '45px'
-        });
+        labelLoop.innerText = 'Loops:';
+        labelLoop.style.fontWeight = '600';
+        labelLoop.style.fontSize = '12px';
+        labelLoop.style.color = '#333';
+        labelLoop.style.minWidth = '45px';
         configDiv.appendChild(labelLoop);
 
         const inputLoop = document.createElement('input');
@@ -143,34 +93,28 @@
         inputLoop.value = '1';
         inputLoop.min = '1';
         inputLoop.max = '999';
-        Object.assign(inputLoop.style, {
-            width: '50px',
-            padding: '4px 6px',
-            border: '1px solid #ccc',
-            borderRadius: '4px',
-            fontSize: '13px'
-        });
+        inputLoop.style.width = '50px';
+        inputLoop.style.padding = '4px 6px';
+        inputLoop.style.border = '1px solid #ccc';
+        inputLoop.style.borderRadius = '4px';
+        inputLoop.style.fontSize = '13px';
         configDiv.appendChild(inputLoop);
 
         const labelContador = document.createElement('label');
-        labelContador.textContent = 'Feitos:';
-        Object.assign(labelContador.style, {
-            fontWeight: '600',
-            fontSize: '12px',
-            color: '#333',
-            marginLeft: '10px',
-            minWidth: '45px'
-        });
+        labelContador.innerText = 'Feitos:';
+        labelContador.style.fontWeight = '600';
+        labelContador.style.fontSize = '12px';
+        labelContador.style.color = '#333';
+        labelContador.style.marginLeft = '10px';
+        labelContador.style.minWidth = '45px';
         configDiv.appendChild(labelContador);
 
         const spanContador = document.createElement('span');
         spanContador.id = 'contador-feitos';
-        spanContador.textContent = '0';
-        Object.assign(spanContador.style, {
-            fontWeight: 'bold',
-            color: '#1a237e',
-            fontSize: '14px'
-        });
+        spanContador.innerText = '0';
+        spanContador.style.fontWeight = 'bold';
+        spanContador.style.color = '#1a237e';
+        spanContador.style.fontSize = '14px';
         configDiv.appendChild(spanContador);
 
         painel.appendChild(configDiv);
@@ -178,244 +122,258 @@
         // ===== STATUS =====
         const statusDiv = document.createElement('div');
         statusDiv.id = 'status-automacao';
-        Object.assign(statusDiv.style, {
-            fontSize: '11px',
-            color: '#555',
-            marginBottom: '10px',
-            padding: '4px 8px',
-            background: '#f5f5f5',
-            borderRadius: '4px',
-            minHeight: '18px'
-        });
-        statusDiv.textContent = '🟢 Pronto';
+        statusDiv.style.fontSize = '11px';
+        statusDiv.style.color = '#555';
+        statusDiv.style.marginBottom = '10px';
+        statusDiv.style.padding = '4px 8px';
+        statusDiv.style.background = '#f5f5f5';
+        statusDiv.style.borderRadius = '4px';
+        statusDiv.style.minHeight = '18px';
+        statusDiv.innerText = '🟢 Pronto';
         painel.appendChild(statusDiv);
 
         function atualizarStatus(msg, cor = '#555') {
-            statusDiv.textContent = msg;
+            statusDiv.innerText = msg;
             statusDiv.style.color = cor;
-            log(`📌 ${msg}`);
+            console.log(`📌 ${msg}`);
         }
 
         // ===== BOTÕES =====
         const botoesDiv = document.createElement('div');
-        Object.assign(botoesDiv.style, {
-            display: 'flex',
-            gap: '6px',
-            marginBottom: '8px'
-        });
+        botoesDiv.style.display = 'flex';
+        botoesDiv.style.gap = '6px';
+        botoesDiv.style.marginBottom = '8px';
 
-        const btnPlay = criarBotao('▶ PLAY', '#4CAF50', '#388E3C');
+        // Botão PLAY
+        const btnPlay = document.createElement('button');
         btnPlay.id = 'btn-play';
+        btnPlay.innerText = '▶ PLAY';
+        btnPlay.style.flex = '1';
+        btnPlay.style.padding = '8px 12px';
+        btnPlay.style.backgroundColor = '#4CAF50';
+        btnPlay.style.color = 'white';
+        btnPlay.style.border = 'none';
+        btnPlay.style.borderRadius = '6px';
+        btnPlay.style.fontWeight = 'bold';
+        btnPlay.style.fontSize = '12px';
+        btnPlay.style.cursor = 'pointer';
+        btnPlay.style.transition = 'all 0.3s ease';
+        btnPlay.onmouseover = () => btnPlay.style.backgroundColor = '#388E3C';
+        btnPlay.onmouseout = () => btnPlay.style.backgroundColor = '#4CAF50';
         botoesDiv.appendChild(btnPlay);
 
-        const btnPause = criarBotao('⏸ PAUSE', '#FF9800', '#F57C00');
+        // Botão PAUSE
+        const btnPause = document.createElement('button');
         btnPause.id = 'btn-pause';
+        btnPause.innerText = '⏸ PAUSE';
+        btnPause.style.flex = '1';
+        btnPause.style.padding = '8px 12px';
+        btnPause.style.backgroundColor = '#FF9800';
+        btnPause.style.color = 'white';
+        btnPause.style.border = 'none';
+        btnPause.style.borderRadius = '6px';
+        btnPause.style.fontWeight = 'bold';
+        btnPause.style.fontSize = '12px';
+        btnPause.style.cursor = 'pointer';
+        btnPause.style.transition = 'all 0.3s ease';
         btnPause.style.opacity = '0.5';
         btnPause.disabled = true;
+        btnPause.onmouseover = () => btnPause.style.backgroundColor = '#F57C00';
+        btnPause.onmouseout = () => btnPause.style.backgroundColor = '#FF9800';
         botoesDiv.appendChild(btnPause);
 
-        const btnStop = criarBotao('⏹ STOP', '#f44336', '#c62828');
+        // Botão STOP
+        const btnStop = document.createElement('button');
         btnStop.id = 'btn-stop';
+        btnStop.innerText = '⏹ STOP';
+        btnStop.style.flex = '1';
+        btnStop.style.padding = '8px 12px';
+        btnStop.style.backgroundColor = '#f44336';
+        btnStop.style.color = 'white';
+        btnStop.style.border = 'none';
+        btnStop.style.borderRadius = '6px';
+        btnStop.style.fontWeight = 'bold';
+        btnStop.style.fontSize = '12px';
+        btnStop.style.cursor = 'pointer';
+        btnStop.style.transition = 'all 0.3s ease';
         btnStop.style.opacity = '0.5';
         btnStop.disabled = true;
+        btnStop.onmouseover = () => btnStop.style.backgroundColor = '#c62828';
+        btnStop.onmouseout = () => btnStop.style.backgroundColor = '#f44336';
         botoesDiv.appendChild(btnStop);
 
         painel.appendChild(botoesDiv);
 
+        // ===== FUNÇÃO DE DELAY =====
+        function delay(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
         // ===== FUNÇÃO PARA EXECUTAR UMA APROPRIAÇÃO =====
         async function executarApropriacao() {
-            try {
-                const celulas = document.querySelectorAll('#assignmentTasks td, td');
-                let itemAlvo = null;
-                let linhaAlvo = null;
+            const celulas = document.querySelectorAll('td');
+            let itemAlvo = null;
+            let linhaAlvo = null;
 
-                // Early check para evitar regex desnecessário
-                for (let el of celulas) {
-                    if (!el.textContent.includes('Sem Atendente')) continue;
-                    const textoLimpo = el.textContent.replace(/\s+/g, ' ').trim();
-                    if (textoLimpo.includes('Sem Atendente / COP Encerramentos')) {
-                        itemAlvo = el;
-                        linhaAlvo = el.closest('tr');
-                        break;
-                    }
+            for (let el of celulas) {
+                const textoLimpo = el.textContent.replace(/\s+/g, ' ').trim();
+                if (textoLimpo.includes('Sem Atendente / COP Encerramentos')) {
+                    itemAlvo = el;
+                    linhaAlvo = el.closest('tr');
+                    break;
                 }
+            }
 
-                if (!itemAlvo || !linhaAlvo) {
-                    atualizarStatus('❌ Nenhum "Sem Atendente" encontrado!', '#f44336');
-                    return false;
-                }
+            if (!itemAlvo || !linhaAlvo) {
+                atualizarStatus('❌ Nenhum "Sem Atendente" encontrado!', '#f44336');
+                return false;
+            }
 
-                const id = linhaAlvo.getAttribute('data-id');
-                atualizarStatus(`🔍 Tentando ID: ${id}`, '#4CAF50');
+            const id = linhaAlvo.getAttribute('data-id');
+            atualizarStatus(`✅ ID: ${id}`, '#4CAF50');
 
-                itemAlvo.scrollIntoView({ block: 'center', behavior: 'smooth' });
-                await delay(200);
+            itemAlvo.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            await delay(200);
 
-                document.querySelectorAll('tr.row_selected').forEach(tr => {
-                    tr.classList.remove('row_selected');
-                });
-                linhaAlvo.classList.add('row_selected');
-                linhaAlvo.click();
+            document.querySelectorAll('tr.row_selected').forEach(tr => {
+                tr.classList.remove('row_selected');
+            });
+            linhaAlvo.classList.add('row_selected');
 
-                itemAlvo.style.backgroundColor = '#c8e6c9';
-                linhaAlvo.style.backgroundColor = '#e8f5e9';
+            ['mousedown', 'mouseup', 'click'].forEach(tipo => {
+                const evt = new MouseEvent(tipo, { view: window, bubbles: true, cancelable: true });
+                linhaAlvo.dispatchEvent(evt);
+            });
+            const primeiraCelula = linhaAlvo.querySelector('td');
+            if (primeiraCelula) {
+                primeiraCelula.dispatchEvent(new Event('click', { bubbles: true }));
+            }
 
-                await delay(DELAYS.APOS_SELECIONAR);
+            itemAlvo.style.backgroundColor = '#c8e6c9';
+            linhaAlvo.style.backgroundColor = '#e8f5e9';
 
-                // ===== VERIFICA SE O BOTÃO EXISTE E ESTÁ ACESSÍVEL =====
-                const btn = document.getElementById('change-responsible');
-                if (!btn) {
-                    atualizarStatus('❌ Botão "change-responsible" não encontrado!', '#f44336');
-                    return false;
-                }
+            await delay(DELAYS.APOS_SELECIONAR);
 
-                if (btn.disabled) {
-                    log('⚠️ Botão estava disabled, tentando habilitar...');
-                    btn.disabled = false;
-                }
+            const btn = document.getElementById('change-responsible');
+            if (!btn) {
+                atualizarStatus('❌ Botão não encontrado!', '#f44336');
+                return false;
+            }
 
-                btn.click();
-                atualizarStatus('🔘 Aguardando confirmação...', '#ff9800');
-                await delay(DELAYS.APOS_CLICAR);
+            if (btn.disabled) {
+                btn.disabled = false;
+                btn.style.opacity = '1';
+                btn.removeAttribute('disabled');
+                btn.classList.remove('disabled');
+            }
 
-                // ===== BUSCA O DIÁLOGO VISÍVEL =====
-                let btnSim = null;
-                const dialogVisivel = document.querySelector('.ui-dialog:not([style*="display: none"])');
+            btn.click();
+            ['mousedown', 'mouseup', 'click'].forEach(tipo => {
+                const evt = new MouseEvent(tipo, { view: window, bubbles: true, cancelable: true });
+                btn.dispatchEvent(evt);
+            });
+            const icone = btn.querySelector('i');
+            if (icone) icone.click();
 
-                if (dialogVisivel) {
-                    const botoes = dialogVisivel.querySelectorAll('.ui-dialog-buttonpane .ui-button');
+            atualizarStatus('🔘 Apropriar', '#ff9800');
+            await delay(DELAYS.APOS_CLICAR);
+
+            let btnSim = null;
+            const dialogs = document.querySelectorAll('.ui-dialog');
+            for (const dialog of dialogs) {
+                if (dialog.style.display !== 'none' && dialog.offsetParent !== null) {
+                    const botoes = dialog.querySelectorAll('.ui-dialog-buttonpane .ui-button');
                     for (const botao of botoes) {
                         if (botao.textContent.trim() === 'Sim') {
                             btnSim = botao;
                             break;
                         }
                     }
+                    if (btnSim) break;
                 }
-
-                if (btnSim) {
-                    btnSim.click();
-                    atualizarStatus('✅ Confirmado!', '#4CAF50');
-                } else {
-                    // Fallback: tenta Enter
-                    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-                    document.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true }));
-                    atualizarStatus('⚠️ Confirmado via Enter', '#ff9800');
-                }
-
-                linhaAlvo.style.backgroundColor = '#a5d6a7';
-                linhaAlvo.style.border = '2px solid green';
-
-                await delay(DELAYS.APOS_CONFIRMAR);
-
-                // ===== VERIFICAÇÃO DE SUCESSO =====
-                // Aguarda um pouco para o sistema processar
-                await delay(500);
-
-                // Verifica se a linha ainda existe e se foi realmente apropriada
-                const linhaAindaExiste = document.querySelector(`tr[data-id="${id}"]`);
-                if (linhaAindaExiste) {
-                    const aindaTemSemAtendente = linhaAindaExiste.textContent.includes('Sem Atendente / COP Encerramentos');
-                    if (aindaTemSemAtendente) {
-                        atualizarStatus('⚠️ Apropriação pode ter falhado - linha ainda consta como "Sem Atendente"', '#ff9800');
-                        linhaAlvo.style.backgroundColor = '#ffebee';
-                        linhaAlvo.style.border = '2px solid red';
-                        return false;
-                    }
-                }
-
-                // Se a linha desapareceu ou não tem mais "Sem Atendente", considera sucesso
-                return true;
-
-            } catch (erro) {
-                logError('❌ Erro na apropriação:', erro);
-                atualizarStatus(`❌ Erro: ${erro.message}`, '#f44336');
-                return false;
             }
+
+            if (btnSim) {
+                btnSim.click();
+                atualizarStatus('✅ OK', '#4CAF50');
+            } else {
+                document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+                document.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter' }));
+                atualizarStatus('⚠️ Enter', '#ff9800');
+            }
+
+            linhaAlvo.style.backgroundColor = '#a5d6a7';
+            linhaAlvo.style.border = '2px solid green';
+
+            await delay(DELAYS.APOS_CONFIRMAR);
+            return true;
         }
 
-        // ===== LOOP PRINCIPAL (COM while PARA GARANTIR SUCESSOS REAIS) =====
+        // ===== LOOP PRINCIPAL =====
         async function executarLoop() {
             if (executando) return;
 
-            totalDesejado = Math.max(1, Math.min(999, parseInt(inputLoop.value) || 1));
-            inputLoop.value = totalDesejado;
-
+            const inputLoop = document.getElementById('input-loop');
+            totalDesejado = parseInt(inputLoop.value) || 1;
             contador = 0;
             executando = true;
             pausado = false;
             parar = false;
 
-            btnPlay.textContent = '⏳ RODANDO';
+            btnPlay.innerText = '⏳ RODANDO';
             btnPlay.style.backgroundColor = '#ff9800';
             btnPlay.disabled = true;
             btnPause.disabled = false;
             btnPause.style.opacity = '1';
-            btnPause.textContent = '⏸ PAUSE';
+            btnPause.innerText = '⏸ PAUSE';
             btnStop.disabled = false;
             btnStop.style.opacity = '1';
 
-            document.getElementById('contador-feitos').textContent = '0';
+            document.getElementById('contador-feitos').innerText = '0';
             atualizarStatus(`▶️ Iniciando ${totalDesejado}...`, '#ff9800');
 
-            let tentativas = 0;
-            const maxTentativas = totalDesejado * MAX_TENTATIVAS_POR_APROPRIACAO;
-
-            // Loop while: continua até atingir o número desejado de SUCESSOS
-            while (contador < totalDesejado && tentativas < maxTentativas) {
+            for (let i = 0; i < totalDesejado; i++) {
                 if (parar) {
-                    atualizarStatus('⏹️ Parado pelo usuário', '#f44336');
+                    atualizarStatus('⏹️ Parado', '#f44336');
                     break;
                 }
 
-                // Aguarda enquanto estiver pausado
-                while (pausado && !parar) {
+                while (pausado) {
                     atualizarStatus('⏸️ PAUSADO', '#f44336');
                     await delay(1000);
+                    if (parar) break;
                 }
                 if (parar) break;
 
-                tentativas++;
-                atualizarStatus(`🔄 Tentativa ${tentativas} - ${contador}/${totalDesejado} concluídos`, '#1a237e');
-
                 const sucesso = await executarApropriacao();
-
                 if (sucesso) {
                     contador++;
-                    document.getElementById('contador-feitos').textContent = contador;
-                    atualizarStatus(`✅ ${contador}/${totalDesejado} (${tentativas} tentativas)`, '#4CAF50');
+                    document.getElementById('contador-feitos').innerText = contador;
+                    atualizarStatus(`✅ ${contador}/${totalDesejado}`, '#4CAF50');
                 } else {
-                    atualizarStatus(`⚠️ Falha na tentativa ${tentativas}. Nova tentativa em breve...`, '#ff9800');
-                    // Pausa extra após falha para dar tempo do sistema recuperar
-                    await delay(DELAYS.APOS_FALHA);
-                    continue; // Não conta como sucesso, tenta novamente
+                    atualizarStatus('❌ Falha', '#f44336');
+                    break;
                 }
 
-                // Delay entre apropriações bem-sucedidas (se ainda precisar de mais)
-                if (contador < totalDesejado) {
+                if (i < totalDesejado - 1) {
                     await delay(DELAY_ENTRE_LOOPS);
                 }
             }
 
-            // Verifica se atingiu o limite de tentativas
-            if (tentativas >= maxTentativas && contador < totalDesejado) {
-                atualizarStatus(`❌ Limite de ${maxTentativas} tentativas atingido. ${contador}/${totalDesejado} concluídos.`, '#f44336');
-            } else if (parar) {
-                atualizarStatus(`⏹️ Parado. ${contador}/${totalDesejado} concluídos em ${tentativas} tentativas.`, '#f44336');
-            } else {
-                atualizarStatus(`🏁 Sucesso! ${contador}/${totalDesejado} concluídos em ${tentativas} tentativas.`, '#4CAF50');
-            }
-
-            // Reset dos botões
             executando = false;
             pausado = false;
-            btnPlay.textContent = '▶ PLAY';
+            btnPlay.innerText = '▶ PLAY';
             btnPlay.style.backgroundColor = '#4CAF50';
             btnPlay.disabled = false;
             btnPause.disabled = true;
             btnPause.style.opacity = '0.5';
-            btnPause.textContent = '⏸ PAUSE';
+            btnPause.innerText = '⏸ PAUSE';
             btnStop.disabled = true;
             btnStop.style.opacity = '0.5';
+
+            if (!parar) {
+                atualizarStatus(`🏁 ${contador} concluídos!`, '#4CAF50');
+            }
         }
 
         // ===== EVENTOS DOS BOTÕES =====
@@ -426,15 +384,13 @@
         });
 
         btnPause.addEventListener('click', () => {
-            if (!executando) return;
-
-            if (!pausado) {
+            if (executando && !pausado) {
                 pausado = true;
-                btnPause.textContent = '▶ RETOMAR';
+                btnPause.innerText = '▶ RETOMAR';
                 atualizarStatus('⏸️ PAUSADO', '#f44336');
-            } else {
+            } else if (executando && pausado) {
                 pausado = false;
-                btnPause.textContent = '⏸ PAUSE';
+                btnPause.innerText = '⏸ PAUSE';
                 atualizarStatus('▶️ Retomando...', '#ff9800');
             }
         });
@@ -444,12 +400,12 @@
                 parar = true;
                 pausado = false;
                 atualizarStatus('⏹️ Parando...', '#f44336');
-                btnPause.textContent = '⏸ PAUSE';
+                btnPause.innerText = '⏸ PAUSE';
             }
         });
 
         inputLoop.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !executando) {
+            if (e.key === 'Enter') {
                 btnPlay.click();
             }
         });
@@ -477,27 +433,17 @@
             arrastando = false;
         });
 
-        // Adiciona o painel ao DOM
+        painel.appendChild(botoesDiv);
         document.body.appendChild(painel);
-
-        log('✅ Painel Super Rápido v7.1 criado!');
-        log('🔄 NOVA FUNÇÃO: Apenas conta apropriações REALMENTE bem-sucedidas');
-        log(`⏱️ Delays: ${DELAYS.APOS_SELECIONAR/1000}s / ${DELAYS.APOS_CLICAR/1000}s / ${DELAYS.APOS_CONFIRMAR/1000}s`);
-        log(`⏱️ Entre loops: ${DELAY_ENTRE_LOOPS/1000}s | Pós-falha: ${DELAYS.APOS_FALHA/1000}s`);
-        log(`🔄 Máximo de ${MAX_TENTATIVAS_POR_APROPRIACAO} tentativas por apropriação`);
-        log('📌 Configure a quantidade e clique em PLAY');
+        console.log('✅ Painel Super Rápido criado!');
+        console.log(`⏱️ Delays: ${DELAYS.APOS_SELECIONAR/1000}s / ${DELAYS.APOS_CLICAR/1000}s / ${DELAYS.APOS_CONFIRMAR/1000}s`);
+        console.log(`⏱️ Entre loops: ${DELAY_ENTRE_LOOPS/1000}s`);
+        console.log('📌 Configure a quantidade e clique em PLAY');
     }
 
-    // ===== INICIALIZAÇÃO =====
+    // ===== INICIALIZA =====
     iniciarPainel();
-
     const observador = new MutationObserver(() => iniciarPainel());
     observador.observe(document.documentElement, { childList: true, subtree: true });
-
-    // Cleanup para evitar memory leaks
-    window.addEventListener('beforeunload', () => {
-        observador.disconnect();
-        parar = true;
-    });
 
 })();
