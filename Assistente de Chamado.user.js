@@ -1,12 +1,16 @@
 // ==UserScript==
 // @name         Osir - Assistente de Chamado
 // @namespace    http://tampermonkey.net/
-// @version      1.4.5
+// @version      1.4.6
 // @description  Alertas automáticos de planos, auditor de estoque e esconder botão
 // @author       Alisson Guerreiro
-// @match        https://erp.osirnet.com.br/*
+// @match        https://erp.osirnet.com.br/ui/*/legacy/operations/*
 // @grant        none
 // @run-at       document-end
+// @homepage     https://github.com/AlissonGuerreiro/meus-scripts
+// @supportURL   https://github.com/AlissonGuerreiro/meus-scripts/issues
+// @downloadURL  https://raw.githubusercontent.com/AlissonGuerreiro/meus-scripts/main/Assistente%20de%20Chamado.user.js
+// @updateURL    https://raw.githubusercontent.com/AlissonGuerreiro/meus-scripts/main/Assistente%20de%20Chamado.user.js
 // ==/UserScript==
 
 (function() {
