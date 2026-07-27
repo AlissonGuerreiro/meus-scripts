@@ -10,8 +10,10 @@
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @license      MIT
-// @homepage     https://github.com/SEU-USUARIO/assistente-cadastro-tatelecom
-// @supportURL   https://github.com/SEU-USUARIO/assistente-cadastro-tatelecom/issues
+// @homepage     https://github.com/AlissonGuerreiro/meus-scripts
+// @supportURL   https://github.com/AlissonGuerreiro/meus-scripts/issues
+// @downloadURL  https://raw.githubusercontent.com/AlissonGuerreiro/meus-scripts/main/Assistente-Cadastro-Tatelecom.user.js
+// @updateURL    https://raw.githubusercontent.com/AlissonGuerreiro/meus-scripts/main/Assistente-Cadastro-Tatelecom.user.js
 // ==/UserScript==
 
 (function() {
