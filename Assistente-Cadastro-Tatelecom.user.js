@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Assistente de Cadastro Tatelecom
 // @namespace    https://github.com/SEU-USUARIO/assistente-cadastro-tatelecom
-// @version      1.1.0
-// @description  Copia dados do ERP e preenche automaticamente no Tatelecom
+// @version      1.3.0
+// @description  Copia dados do ERP, preenche automaticamente no Tatelecom e gera máscara de portabilidade
 // @author       SEU-NOME
 // @match        https://erp.osirnet.com.br/*
 // @match        http://sistema.tatelecom.com.br/*
@@ -21,6 +21,17 @@
 
     const isERP = window.location.href.includes('erp.osirnet.com.br');
     const isTatelecom = window.location.href.includes('sistema.tatelecom.com.br');
+    const isHistorico = window.location.href.includes('/historico-consumo/');
+
+    // Configuração de delays
+    const CONFIG = {
+        DELAY_INICIAL: 300,
+        DELAY_CAMPO: 300,
+        DELAY_CEP: 500,
+        DELAY_ENDERECO: 200,
+        DELAY_TELEFONE: 400,
+        DELAY_FINAL: 3500
+    };
 
     // ============================================
     // LOG APENAS NO CONSOLE
@@ -41,11 +52,13 @@
         btn.textContent = (sucesso ? '✅ ' : '❌ ') + msg;
         btn.style.backgroundColor = sucesso ? '#2e7d32' : '#c62828';
         btn.style.color = 'white';
+        btn.disabled = true;
 
         setTimeout(() => {
             btn.textContent = originalText;
             btn.style.backgroundColor = originalBg || '';
             btn.style.color = '';
+            btn.disabled = false;
         }, 1500);
     }
 
@@ -57,10 +70,7 @@
         if (!modal) return false;
 
         const titulo = modal.querySelector('.MuiTypography-root[class*="MuiTypography-h6"]');
-        if (titulo && titulo.textContent.includes('Informações -')) {
-            return true;
-        }
-        return false;
+        return titulo && titulo.textContent.includes('Informações -');
     }
 
     // ============================================
@@ -89,12 +99,14 @@
                 uf: ''
             };
 
+            // Captura nome do título
             const titulo = modal.querySelector('.MuiTypography-root[class*="MuiTypography-h6"]');
             if (titulo) {
                 const match = titulo.textContent.match(/Informações - (.+)/);
                 dados.nome = match ? match[1].trim() : titulo.textContent.replace('Informações - ', '').trim();
             }
 
+            // Função auxiliar para buscar valor por label
             function getValueByLabel(labelText) {
                 const labels = modal.querySelectorAll('[class*="MuiTypography-subtitle1"]');
                 for (let label of labels) {
@@ -110,6 +122,7 @@
                 return '';
             }
 
+            // Função para extrair endereço completo
             function getEnderecoCompleto() {
                 const labels = modal.querySelectorAll('[class*="MuiTypography-subtitle1"]');
                 for (let label of labels) {
@@ -150,11 +163,7 @@
 
             if (dados.endereco) {
                 const partes = fatiarEndereco(dados.endereco);
-                dados.logradouro = partes.logradouro;
-                dados.numero = partes.numero;
-                dados.bairro = partes.bairro;
-                dados.cidade = partes.cidade;
-                dados.uf = partes.uf;
+                Object.assign(dados, partes);
             }
 
             log(`Dados capturados: ${dados.nome}`, 'success');
@@ -174,7 +183,8 @@
         if (!enderecoCompleto) return resultado;
 
         try {
-            const partes = enderecoCompleto.split(',').map(p => p.trim());
+            const semCep = enderecoCompleto.replace(/\d{5}-\d{3}/, '').trim();
+            const partes = semCep.split(',').map(p => p.trim()).filter(p => p);
 
             if (partes.length >= 1) {
                 const primeira = partes[0];
@@ -195,8 +205,10 @@
 
             if (partes.length >= 2) {
                 const segunda = partes[1].trim();
-                const bairroMatch = segunda.match(/^([^-]+)/);
-                resultado.bairro = bairroMatch ? bairroMatch[1].trim() : segunda;
+                const bairro = segunda.replace(/\s*-\s*[A-Za-zçãõáéíóúâêîôûàèìòù\s]+\s*[A-Z]{2}$/, '')
+                                     .replace(/\s*-\s*[A-Za-z\s]+$/, '')
+                                     .trim();
+                resultado.bairro = bairro || segunda;
             }
 
             if (partes.length >= 3) {
@@ -226,10 +238,11 @@
 
             if (resultado.bairro) {
                 resultado.bairro = resultado.bairro
-                    .replace(/\s*-\s*[A-Za-z]+\s*$/, '')
+                    .replace(/\s*-\s*[A-Za-zçãõáéíóúâêîôûàèìòù\s]+\s*$/, '')
                     .replace(/\s*[A-Z]{2}$/, '')
                     .trim();
             }
+
         } catch (error) {
             console.error('Erro ao fatiar endereço:', error);
         }
@@ -244,7 +257,7 @@
         const btn = document.getElementById('btn-copiar-erp');
         const dados = extrairDadosERP();
 
-        if (dados) {
+        if (dados && dados.nome) {
             GM_setValue('dados_cliente_erp', JSON.stringify(dados));
             feedbackBotao(btn, true, 'Copiado!');
             log('Dados salvos!', 'success');
@@ -260,16 +273,18 @@
         if (!elemento) return false;
 
         try {
-            elemento.focus();
+            let valorFinal = valor;
 
-            const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(elemento), 'value')?.set ||
-                           Object.getOwnPropertyDescriptor(elemento, 'value')?.set;
-
-            if (setter) {
-                setter.call(elemento, valor);
-            } else {
-                elemento.value = valor;
+            if (campoNome && campoNome.toLowerCase().includes('cpf') && valor.length === 11) {
+                valorFinal = valor.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
             }
+
+            if (campoNome && campoNome.toLowerCase().includes('telefone') && valor.length === 11) {
+                valorFinal = valor.replace(/(\d{2})(\d{5})(\d{4})/, '($1)$2-$3');
+            }
+
+            elemento.focus();
+            elemento.value = valorFinal;
 
             ['input', 'change', 'blur'].forEach(tipo => {
                 elemento.dispatchEvent(new Event(tipo, { bubbles: true, cancelable: true }));
@@ -277,30 +292,32 @@
 
             const component = elemento.closest('[wire\\:id]');
             if (component && window.Livewire) {
-                const wireId = component.getAttribute('wire:id');
-                const lw = window.Livewire.find(wireId);
-                if (lw) {
-                    let modelName = elemento.getAttribute('wire:model') ||
-                                    elemento.getAttribute('wire:model.defer') ||
-                                    elemento.getAttribute('wire:model.live');
-                    if (modelName) {
-                        lw.set(modelName, valor, true);
+                try {
+                    const wireId = component.getAttribute('wire:id');
+                    const lw = window.Livewire.find(wireId);
+                    if (lw) {
+                        let modelName = elemento.getAttribute('wire:model') ||
+                                      elemento.getAttribute('wire:model.defer') ||
+                                      elemento.getAttribute('wire:model.live');
+                        if (modelName) {
+                            lw.set(modelName, valorFinal, true);
+                        }
                     }
+                } catch (e) {
+                    // Fallback
                 }
             }
 
-            let tentativas = 0;
-            const trava = setInterval(() => {
-                if (elemento.value !== valor) {
-                    elemento.value = valor;
+            setTimeout(() => {
+                if (elemento.value !== valorFinal) {
+                    elemento.value = valorFinal;
                     elemento.dispatchEvent(new Event('input', { bubbles: true }));
                 }
-                tentativas++;
-                if (tentativas >= 4) clearInterval(trava);
-            }, 150);
+            }, 100);
 
             return true;
         } catch (error) {
+            console.error(`Erro ao preencher ${campoNome}:`, error);
             return false;
         }
     }
@@ -318,7 +335,11 @@
             return;
         }
 
-        const cpfInput = document.querySelector('#input_cpf') || document.querySelector('input[wire\\:model*="cpf"]');
+        const cpfInput = document.querySelector('#input_cpf') ||
+                        document.querySelector('input[wire\\:model*="cpf"]') ||
+                        document.querySelector('input[name*="cpf"]') ||
+                        document.querySelector('input[type="text"][placeholder*="CPF"]');
+
         if (cpfInput) {
             forcarInputLivewire(cpfInput, dados.documento, 'CPF');
             feedbackBotao(btn, true, 'CPF Colado!');
@@ -329,7 +350,7 @@
     }
 
     // ============================================
-    // PREENCHER TUDO
+    // PREENCHER TUDO AUTOMÁTICO
     // ============================================
     function preencherTudoAutomatico() {
         const btn = document.getElementById('btn-auto-tudo');
@@ -342,36 +363,45 @@
         }
 
         log('Iniciando preenchimento...', 'info');
+        btn.disabled = true;
 
         let delay = 0;
 
         setTimeout(() => {
-            const el = document.querySelector('#input_nome') || document.querySelector('input[wire\\:model*="nome"]');
+            const el = document.querySelector('#input_nome') ||
+                      document.querySelector('input[wire\\:model*="nome"]') ||
+                      document.querySelector('input[name*="nome"]');
             if (el) forcarInputLivewire(el, dados.nome, 'Nome');
         }, delay);
-        delay += 300;
+        delay += CONFIG.DELAY_CAMPO;
 
         if (dados.dataNascimento) {
             setTimeout(() => {
-                const el = document.querySelector('#input_dt_nascimento') || document.querySelector('input[wire\\:model*="nascimento"]');
+                const el = document.querySelector('#input_dt_nascimento') ||
+                          document.querySelector('input[wire\\:model*="nascimento"]') ||
+                          document.querySelector('input[name*="nascimento"]');
                 if (el) forcarInputLivewire(el, dados.dataNascimento, 'Data Nasc.');
             }, delay);
-            delay += 300;
+            delay += CONFIG.DELAY_CAMPO;
         }
 
         if (dados.email) {
             setTimeout(() => {
-                const el = document.querySelector('#input_email') || document.querySelector('input[wire\\:model*="email"]');
+                const el = document.querySelector('#input_email') ||
+                          document.querySelector('input[wire\\:model*="email"]') ||
+                          document.querySelector('input[name*="email"]');
                 if (el) forcarInputLivewire(el, dados.email, 'Email');
             }, delay);
-            delay += 300;
+            delay += CONFIG.DELAY_CAMPO;
         }
 
         setTimeout(() => {
-            const el = document.querySelector('#input_nome_mae') || document.querySelector('input[wire\\:model*="mae"]');
+            const el = document.querySelector('#input_nome_mae') ||
+                      document.querySelector('input[wire\\:model*="mae"]') ||
+                      document.querySelector('input[name*="mae"]');
             if (el) forcarInputLivewire(el, 'XXXX', 'Nome da Mãe');
         }, delay);
-        delay += 300;
+        delay += CONFIG.DELAY_CAMPO;
 
         setTimeout(() => {
             const telTab = document.querySelector('a[href="#primaryhome"]');
@@ -379,30 +409,39 @@
 
             setTimeout(() => {
                 if (dados.celular) {
-                    let tel = dados.celular.replace(/\D/g, '');
-                    if (tel.length === 11) tel = `(${tel.slice(0,2)})${tel.slice(2,7)}-${tel.slice(7)}`;
-                    else if (tel.length === 10) tel = `(${tel.slice(0,2)})${tel.slice(2,6)}-${tel.slice(6)}`;
-
-                    const telInput = document.querySelector('input[wire\\:model="telefones.0.numero"]');
+                    const telInput = document.querySelector('input[wire\\:model="telefones.0.numero"]') ||
+                                   document.querySelector('input[name*="telefone"]') ||
+                                   document.querySelector('input[type="tel"]');
                     if (telInput) {
-                        forcarInputLivewire(telInput, tel, 'Telefone');
+                        const telLimpo = dados.celular.replace(/\D/g, '');
+                        forcarInputLivewire(telInput, telLimpo, 'Telefone');
 
                         setTimeout(() => {
-                            const tipoSelect = document.querySelector('select[wire\\:model="telefones.0.tipo"]');
-                            if (tipoSelect) forcarInputLivewire(tipoSelect, 'Celular WhatsApp', 'Tipo');
-                        }, 300);
+                            const tipoSelect = document.querySelector('select[wire\\:model="telefones.0.tipo"]') ||
+                                             document.querySelector('select[name*="tipo_telefone"]');
+                            if (tipoSelect) {
+                                const options = tipoSelect.querySelectorAll('option');
+                                for (let opt of options) {
+                                    if (opt.textContent.toLowerCase().includes('celular') ||
+                                        opt.textContent.toLowerCase().includes('whatsapp')) {
+                                        forcarInputLivewire(tipoSelect, opt.value, 'Tipo');
+                                        break;
+                                    }
+                                }
+                            }
+                        }, CONFIG.DELAY_TELEFONE);
                     }
                 }
-            }, 400);
+            }, CONFIG.DELAY_TELEFONE);
         }, delay);
-        delay += 1200;
+        delay += CONFIG.DELAY_TELEFONE + CONFIG.DELAY_CEP;
 
         if (dados.cep) {
             setTimeout(() => {
                 const endTab = document.querySelector('a[href="#primaryprofile"]');
                 if (endTab) {
                     endTab.click();
-                    setTimeout(() => executarFluxoEndereco(dados, 0), 600);
+                    setTimeout(() => executarFluxoEndereco(dados, 0), CONFIG.DELAY_ENDERECO);
                 } else {
                     executarFluxoEndereco(dados, 0);
                 }
@@ -410,106 +449,423 @@
         }
 
         setTimeout(() => {
+            btn.disabled = false;
             feedbackBotao(btn, true, 'Pronto!');
             log('Preenchimento concluído!', 'success');
-        }, delay + 3500);
+        }, delay + CONFIG.DELAY_FINAL);
     }
 
     // ============================================
     // FLUXO ENDEREÇO
     // ============================================
     function executarFluxoEndereco(dados, index) {
-        const cepInput = document.querySelector(`input[wire\\:model="enderecos.${index}.cep"]`);
+        const cepInput = document.querySelector(`input[wire\\:model="enderecos.${index}.cep"]`) ||
+                        document.querySelector('input[name*="cep"]') ||
+                        document.querySelector('input[placeholder*="CEP"]');
+
         if (cepInput && dados.cep) {
-            let cepLimpo = dados.cep.replace(/\D/g, '');
-            if (cepLimpo.length === 8) cepLimpo = `${cepLimpo.slice(0,5)}-${cepLimpo.slice(5)}`;
+            const cepLimpo = dados.cep.replace(/\D/g, '');
             forcarInputLivewire(cepInput, cepLimpo, 'CEP');
 
             setTimeout(() => {
-                let btn = document.querySelector(`button[wire\\:click*="busca_cep(${index})"]`);
+                let btn = document.querySelector(`button[wire\\:click*="busca_cep"]`);
                 if (!btn) {
                     const botoes = document.querySelectorAll('button');
                     for (let b of botoes) {
-                        if (b.textContent.trim().includes('Busca')) { btn = b; break; }
+                        if (b.textContent.trim().toLowerCase().includes('busca') ||
+                            b.textContent.trim().toLowerCase().includes('consultar')) {
+                            btn = b;
+                            break;
+                        }
                     }
                 }
                 if (btn) btn.click();
-            }, 500);
+            }, CONFIG.DELAY_CEP);
         }
 
-        setTimeout(() => {
-            if (dados.logradouro) {
-                const el = document.querySelector(`input[wire\\:model="enderecos.${index}.logradouro"]`);
-                if (el) forcarInputLivewire(el, dados.logradouro, 'Logradouro');
-            }
-        }, 1000);
+        const campos = [
+            { chave: 'logradouro', delay: 1000 },
+            { chave: 'numero', delay: 1200 },
+            { chave: 'bairro', delay: 1400 },
+            { chave: 'cidade', delay: 1600, isSelect: true },
+            { chave: 'uf', delay: 1800, isSelect: true }
+        ];
 
-        setTimeout(() => {
-            if (dados.numero) {
-                const el = document.querySelector(`input[wire\\:model="enderecos.${index}.numero"]`);
-                if (el) forcarInputLivewire(el, dados.numero, 'Número');
-            }
-        }, 1200);
+        campos.forEach(({ chave, delay, isSelect }) => {
+            if (dados[chave]) {
+                setTimeout(() => {
+                    const selector = `input[wire\\:model="enderecos.${index}.${chave}"]` +
+                                   `, input[name*="${chave}"]` +
+                                   `, input[placeholder*="${chave.charAt(0).toUpperCase() + chave.slice(1)}"]`;
 
-        setTimeout(() => {
-            if (dados.bairro) {
-                const el = document.querySelector(`input[wire\\:model="enderecos.${index}.bairro"]`);
-                if (el) forcarInputLivewire(el, dados.bairro, 'Bairro');
-            }
-        }, 1400);
+                    let el = document.querySelector(selector);
 
-        setTimeout(() => {
-            if (dados.cidade) {
-                const el = document.querySelector(`select[wire\\:model="enderecos.${index}.cidade"]`);
-                if (el) {
-                    const options = el.querySelectorAll('option');
-                    for (let opt of options) {
-                        if (opt.textContent.trim().toUpperCase() === dados.cidade.toUpperCase() ||
-                            opt.textContent.trim().toUpperCase().includes(dados.cidade.toUpperCase())) {
-                            forcarInputLivewire(el, opt.value, 'Cidade');
-                            break;
+                    if (isSelect) {
+                        el = document.querySelector(`select[wire\\:model="enderecos.${index}.${chave}"]`) ||
+                             document.querySelector(`select[name*="${chave}"]`);
+                    }
+
+                    if (el) {
+                        if (isSelect) {
+                            const options = el.querySelectorAll('option');
+                            for (let opt of options) {
+                                const optText = opt.textContent.trim().toUpperCase();
+                                const valorBusca = dados[chave].toUpperCase();
+                                if (optText === valorBusca || optText.includes(valorBusca)) {
+                                    forcarInputLivewire(el, opt.value, chave);
+                                    break;
+                                }
+                            }
+                        } else {
+                            forcarInputLivewire(el, dados[chave], chave);
                         }
+                    }
+                }, delay);
+            }
+        });
+
+        setTimeout(() => {
+            const el = document.querySelector(`select[wire\\:model="enderecos.${index}.tipo"]`) ||
+                      document.querySelector('select[name*="tipo_endereco"]');
+            if (el) {
+                const options = el.querySelectorAll('option');
+                for (let opt of options) {
+                    if (opt.textContent.toLowerCase().includes('residencial')) {
+                        forcarInputLivewire(el, opt.value, 'Tipo');
+                        break;
                     }
                 }
             }
-        }, 1600);
-
-        setTimeout(() => {
-            if (dados.uf) {
-                const el = document.querySelector(`select[wire\\:model="enderecos.${index}.uf"]`);
-                if (el) {
-                    const options = el.querySelectorAll('option');
-                    for (let opt of options) {
-                        if (opt.value.toUpperCase() === dados.uf.toUpperCase()) {
-                            forcarInputLivewire(el, opt.value, 'UF');
-                            break;
-                        }
-                    }
-                }
-            }
-        }, 1800);
-
-        setTimeout(() => {
-            const el = document.querySelector(`select[wire\\:model="enderecos.${index}.tipo"]`);
-            if (el) forcarInputLivewire(el, 'residencial', 'Tipo');
         }, 2000);
+    }
+
+    // ============================================
+    // FUNÇÕES DA MÁSCARA DE PORTABILIDADE
+    // ============================================
+    function extrairDadosHistorico() {
+        try {
+            const dados = {
+                nome: '',
+                cpf: '',
+                nascimento: '',
+                email: '',
+                telefone: '',
+                iccid: '',
+                plano: '',
+                status: '',
+                dataPortabilidade: '',
+                numeroPortado: '',
+                statusPortabilidade: ''
+            };
+
+            // Nome
+            const nomeEl = document.querySelector('.d-flex.flex-column .w-100 strong');
+            if (nomeEl) dados.nome = nomeEl.textContent.trim();
+
+            // CPF e outros dados
+            const cpfEl = document.querySelectorAll('.row .col strong');
+            if (cpfEl.length >= 2) {
+                dados.cpf = cpfEl[0]?.textContent?.trim() || '';
+                dados.nascimento = cpfEl[1]?.textContent?.trim() || '';
+            }
+            if (cpfEl.length >= 4) {
+                dados.email = cpfEl[2]?.textContent?.trim() || '';
+            }
+            if (cpfEl.length >= 6) {
+                dados.telefone = cpfEl[4]?.textContent?.trim() || '';
+            }
+            if (cpfEl.length >= 8) {
+                dados.plano = cpfEl[6]?.textContent?.trim() || '';
+            }
+            if (cpfEl.length >= 10) {
+                dados.iccid = cpfEl[8]?.textContent?.trim() || '';
+            }
+            if (cpfEl.length >= 12) {
+                dados.status = cpfEl[10]?.textContent?.trim() || '';
+            }
+
+            // Dados da Portabilidade
+            const portabilidadeSection = document.querySelector('.card .card-body .col-9');
+            if (portabilidadeSection) {
+                const text = portabilidadeSection.textContent;
+                const dataMatch = text.match(/Data Prevista:\s*([^\n]+)/);
+                const numeroMatch = text.match(/Número Portado:\s*([^\n]+)/);
+                const statusMatch = text.match(/Status:\s*([^\n]+)/);
+
+                dados.dataPortabilidade = dataMatch ? dataMatch[1].trim() : '';
+                dados.numeroPortado = numeroMatch ? numeroMatch[1].trim() : '';
+                dados.statusPortabilidade = statusMatch ? statusMatch[1].trim() : '';
+            }
+
+            log('Dados do histórico capturados!', 'success');
+            return dados;
+        } catch (error) {
+            console.error('Erro ao extrair dados do histórico:', error);
+            log('Erro ao extrair dados do histórico', 'error');
+            return null;
+        }
+    }
+
+    function montarMascaraPortabilidade(dados) {
+        if (!dados) return '';
+
+        return `CHIP: ESim ( ) Sim Card (X)
+
+PORTABILIDADE EM NOME DE 3º: SIM ( ) NÃO (X)
+
+Nº Telefone Provisório: ${dados.telefone || ''}
+Iccid: ${dados.iccid || ''}
+
+Dados da Portabilidade:
+Data Prevista: ${dados.dataPortabilidade || ''}
+Número Portado: ${dados.numeroPortado || ''}
+Status: ${dados.statusPortabilidade || ''}
+
+Cliente ciente do prazo de 24hs para a confirmação via sms? SIM (X) NÃO ( )
+
+Ciente da Data Prevista? SIM (X) NÃO ( )`;
+    }
+
+    function criarJanelaPortabilidade(mascara) {
+        const existing = document.getElementById('janela-mascara-portabilidade');
+        if (existing) existing.remove();
+
+        const overlay = document.createElement('div');
+        overlay.id = 'janela-mascara-portabilidade';
+        overlay.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.6);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 999999;
+            animation: fadeIn 0.3s ease;
+            backdrop-filter: blur(3px);
+        `;
+
+        const container = document.createElement('div');
+        container.style.cssText = `
+            background: white;
+            border-radius: 16px;
+            padding: 30px;
+            max-width: 650px;
+            width: 92%;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 25px 80px rgba(0,0,0,0.4);
+            position: relative;
+            animation: slideUp 0.3s ease;
+        `;
+
+        const closeBtn = document.createElement('button');
+        closeBtn.innerHTML = '✕';
+        closeBtn.style.cssText = `
+            position: absolute;
+            top: 12px;
+            right: 18px;
+            font-size: 26px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: #999;
+            font-weight: bold;
+            transition: color 0.2s;
+            z-index: 10;
+        `;
+        closeBtn.onmouseover = () => closeBtn.style.color = '#333';
+        closeBtn.onmouseout = () => closeBtn.style.color = '#999';
+        closeBtn.onclick = () => overlay.remove();
+
+        const title = document.createElement('h2');
+        title.innerHTML = '📋 Máscara de Portabilidade';
+        title.style.cssText = `
+            margin: 0 0 20px 0;
+            color: #1976d2;
+            font-size: 22px;
+            font-weight: 700;
+            border-bottom: 3px solid #e3f2fd;
+            padding-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        `;
+
+        const dados = extrairDadosHistorico();
+        const infoCliente = document.createElement('div');
+        infoCliente.style.cssText = `
+            background: #f5f7fa;
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            font-size: 13px;
+            color: #555;
+            border-left: 4px solid #1976d2;
+        `;
+        infoCliente.innerHTML = `
+            <strong>👤 ${dados?.nome || 'Cliente'}</strong>
+            ${dados?.telefone ? ` | 📱 ${dados.telefone}` : ''}
+            ${dados?.iccid ? ` | 🆔 ICCID: ${dados.iccid.substring(0, 10)}...` : ''}
+        `;
+
+        const textarea = document.createElement('textarea');
+        textarea.value = mascara;
+        textarea.style.cssText = `
+            width: 100%;
+            min-height: 350px;
+            padding: 16px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.8;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            resize: vertical;
+            box-sizing: border-box;
+            background: #fafafa;
+            color: #1a1a1a;
+            transition: border-color 0.3s;
+        `;
+        textarea.onfocus = () => textarea.style.borderColor = '#1976d2';
+        textarea.onblur = () => textarea.style.borderColor = '#e0e0e0';
+
+        const buttonContainer = document.createElement('div');
+        buttonContainer.style.cssText = `
+            margin-top: 18px;
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+            flex-wrap: wrap;
+        `;
+
+        const copyBtn = document.createElement('button');
+        copyBtn.innerHTML = '📋 Copiar Máscara';
+        copyBtn.style.cssText = `
+            padding: 12px 28px;
+            background: linear-gradient(135deg, #28a745, #20c997);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 15px;
+            font-weight: 600;
+            transition: all 0.2s;
+            box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3);
+        `;
+        copyBtn.onmouseover = () => {
+            copyBtn.style.transform = 'translateY(-2px)';
+            copyBtn.style.boxShadow = '0 6px 20px rgba(40, 167, 69, 0.4)';
+        };
+        copyBtn.onmouseout = () => {
+            copyBtn.style.transform = 'translateY(0)';
+            copyBtn.style.boxShadow = '0 4px 12px rgba(40, 167, 69, 0.3)';
+        };
+        copyBtn.onclick = () => {
+            // Seleciona o texto
+            textarea.select();
+            textarea.setSelectionRange(0, 99999);
+
+            // Tenta copiar
+            try {
+                const sucesso = document.execCommand('copy');
+                if (sucesso) {
+                    copyBtn.innerHTML = '✅ Copiado!';
+                    copyBtn.style.background = 'linear-gradient(135deg, #2e7d32, #1a8c4a)';
+                    setTimeout(() => {
+                        copyBtn.innerHTML = '📋 Copiar Máscara';
+                        copyBtn.style.background = 'linear-gradient(135deg, #28a745, #20c997)';
+                    }, 2000);
+                } else {
+                    // Fallback: usa o clipboard API
+                    navigator.clipboard.writeText(mascara).then(() => {
+                        copyBtn.innerHTML = '✅ Copiado!';
+                        copyBtn.style.background = 'linear-gradient(135deg, #2e7d32, #1a8c4a)';
+                        setTimeout(() => {
+                            copyBtn.innerHTML = '📋 Copiar Máscara';
+                            copyBtn.style.background = 'linear-gradient(135deg, #28a745, #20c997)';
+                        }, 2000);
+                    }).catch(() => {
+                        alert('❌ Não foi possível copiar. Selecione o texto manualmente e use Ctrl+C.');
+                    });
+                }
+            } catch (e) {
+                alert('❌ Não foi possível copiar. Selecione o texto manualmente e use Ctrl+C.');
+            }
+        };
+
+        const closeButton = document.createElement('button');
+        closeButton.innerHTML = '❌ Fechar';
+        closeButton.style.cssText = `
+            padding: 12px 24px;
+            background: #6c757d;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 15px;
+            font-weight: 600;
+            transition: all 0.2s;
+        `;
+        closeButton.onmouseover = () => {
+            closeButton.style.background = '#5a6268';
+            closeButton.style.transform = 'translateY(-2px)';
+        };
+        closeButton.onmouseout = () => {
+            closeButton.style.background = '#6c757d';
+            closeButton.style.transform = 'translateY(0)';
+        };
+        closeButton.onclick = () => overlay.remove();
+
+        buttonContainer.appendChild(copyBtn);
+        buttonContainer.appendChild(closeButton);
+
+        container.appendChild(closeBtn);
+        container.appendChild(title);
+        container.appendChild(infoCliente);
+        container.appendChild(textarea);
+        container.appendChild(buttonContainer);
+        overlay.appendChild(container);
+
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes fadeIn {
+                from { opacity: 0; }
+                to { opacity: 1; }
+            }
+            @keyframes slideUp {
+                from { opacity: 0; transform: translateY(30px) scale(0.95); }
+                to { opacity: 1; transform: translateY(0) scale(1); }
+            }
+        `;
+        document.head.appendChild(style);
+
+        document.body.appendChild(overlay);
+    }
+
+    function gerarMascaraPortabilidade() {
+        const dados = extrairDadosHistorico();
+        if (!dados || !dados.nome) {
+            log('Não foi possível extrair os dados da página', 'error');
+            alert('❌ Não foi possível extrair os dados da página!');
+            return;
+        }
+        const mascara = montarMascaraPortabilidade(dados);
+        criarJanelaPortabilidade(mascara);
+        log('Máscara de portabilidade gerada!', 'success');
     }
 
     // ============================================
     // INJETAR BOTÃO ERP
     // ============================================
     function injetarBotaoERP() {
-        // SÓ INJETA SE FOR A MODAL DE INFORMAÇÕES DO CLIENTE
-        if (!isModalInformacoesCliente()) {
-            return;
-        }
-
+        if (!isModalInformacoesCliente()) return;
         if (document.getElementById('btn-copiar-erp')) return;
 
         const modal = document.querySelector('.MuiDialog-container');
         if (!modal) return;
 
-        // Procura a toolbar dentro da modal específica
         const toolbar = modal.querySelector('.MuiToolbar-root');
         if (!toolbar) return;
 
@@ -517,13 +873,19 @@
         btn.id = 'btn-copiar-erp';
         btn.textContent = '📋 Capturar Dados';
         Object.assign(btn.style, {
-            marginRight: '10px', backgroundColor: '#1976d2', color: 'white',
-            padding: '8px 16px', borderRadius: '4px', border: 'none',
-            cursor: 'pointer', fontWeight: 'bold', zIndex: '9999'
+            marginRight: '10px',
+            backgroundColor: '#1976d2',
+            color: 'white',
+            padding: '8px 16px',
+            borderRadius: '4px',
+            border: 'none',
+            cursor: 'pointer',
+            fontWeight: 'bold',
+            zIndex: '9999'
         });
         btn.addEventListener('click', copiarDadosCliente);
         toolbar.insertBefore(btn, toolbar.firstChild);
-        log('Botão ERP injetado na modal de informações', 'success');
+        log('Botão ERP injetado', 'success');
     }
 
     // ============================================
@@ -532,15 +894,23 @@
     function injetarBotoesTatelecom() {
         log('Procurando elementos do Tatelecom...', 'info');
 
-        const cpfInput = document.querySelector('#input_cpf') || document.querySelector('input[wire\\:model*="cpf"]');
+        const cpfInput = document.querySelector('#input_cpf') ||
+                        document.querySelector('input[wire\\:model*="cpf"]') ||
+                        document.querySelector('input[name*="cpf"]');
         if (cpfInput && !document.getElementById('btn-preenche-cpf')) {
             const btn = document.createElement('button');
             btn.id = 'btn-preenche-cpf';
             btn.textContent = '📋 Colar CPF';
             Object.assign(btn.style, {
-                marginLeft: '5px', padding: '6px 12px', fontSize: '14px',
-                backgroundColor: '#28a745', color: 'white', border: 'none',
-                borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold',
+                marginLeft: '5px',
+                padding: '6px 12px',
+                fontSize: '14px',
+                backgroundColor: '#28a745',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontWeight: 'bold',
                 whiteSpace: 'nowrap'
             });
             btn.addEventListener('click', preencherCpf);
@@ -573,7 +943,9 @@
                      document.querySelector('.main-content') ||
                      document.body;
 
-        const temNome = document.querySelector('#input_nome') || document.querySelector('input[wire\\:model*="nome"]');
+        const temNome = document.querySelector('#input_nome') ||
+                       document.querySelector('input[wire\\:model*="nome"]') ||
+                       document.querySelector('input[name*="nome"]');
         if (!temNome && !form) {
             log('Tela de cadastro não detectada', 'warning');
             return;
@@ -631,11 +1003,102 @@
     }
 
     // ============================================
+    // INJETAR BOTÃO DE PORTABILIDADE
+    // ============================================
+    function injetarBotaoPortabilidade() {
+        if (!isHistorico) return;
+        if (document.getElementById('btn-portabilidade')) return;
+
+        log('Página de histórico detectada!', 'info');
+
+        // Procura o container dos botões (onde está o botão de suporte)
+        let target = document.querySelector('.d-flex.justify-content-between .d-flex.gap-2');
+        if (!target) {
+            target = document.querySelector('.d-flex.justify-content-between');
+        }
+        if (!target) {
+            target = document.querySelector('.card .card-body .d-flex.justify-content-between');
+        }
+
+        // Se não encontrar, cria um container flutuante
+        if (!target) {
+            const floatContainer = document.createElement('div');
+            floatContainer.style.cssText = `
+                position: fixed;
+                top: 80px;
+                right: 20px;
+                z-index: 99999;
+                background: white;
+                padding: 12px 18px;
+                border-radius: 12px;
+                box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+                border: 2px solid #1976d2;
+            `;
+
+            const btn = document.createElement('button');
+            btn.id = 'btn-portabilidade';
+            btn.textContent = '📋 Máscara Portabilidade';
+            btn.style.cssText = `
+                padding: 8px 16px;
+                background: #1976d2;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                cursor: pointer;
+                font-weight: bold;
+                font-size: 14px;
+            `;
+            btn.onclick = gerarMascaraPortabilidade;
+
+            floatContainer.appendChild(btn);
+            document.body.appendChild(floatContainer);
+            log('✅ Botão de portabilidade criado (flutuante)!', 'success');
+            return;
+        }
+
+        // Se encontrou, adiciona o botão lá
+        const btn = document.createElement('button');
+        btn.id = 'btn-portabilidade';
+        btn.textContent = '📋 Máscara Portabilidade';
+        btn.style.cssText = `
+            padding: 6px 14px;
+            background: #1976d2;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 13px;
+            transition: all 0.2s;
+        `;
+        btn.onmouseover = () => {
+            btn.style.background = '#1565c0';
+            btn.style.transform = 'scale(1.05)';
+        };
+        btn.onmouseout = () => {
+            btn.style.background = '#1976d2';
+            btn.style.transform = 'scale(1)';
+        };
+        btn.onclick = gerarMascaraPortabilidade;
+
+        // Insere antes do botão de suporte (btn-warning)
+        const supportBtn = target.querySelector('.btn-warning');
+        if (supportBtn) {
+            target.insertBefore(btn, supportBtn);
+        } else {
+            target.appendChild(btn);
+        }
+
+        log('✅ Botão de portabilidade injetado!', 'success');
+    }
+
+    // ============================================
     // INICIAR
     // ============================================
     const observer = new MutationObserver(() => {
         if (isERP) injetarBotaoERP();
         if (isTatelecom) injetarBotoesTatelecom();
+        if (isHistorico) injetarBotaoPortabilidade();
     });
 
     observer.observe(document.body, { childList: true, subtree: true });
@@ -643,10 +1106,20 @@
     setTimeout(() => {
         if (isERP) injetarBotaoERP();
         if (isTatelecom) injetarBotoesTatelecom();
+        if (isHistorico) injetarBotaoPortabilidade();
     }, 1500);
 
-    console.log('🚀 Assistente de Cadastro Tatelecom v1.1.0 carregado!');
-    console.log('📌 Modo:', isERP ? 'ERP' : isTatelecom ? 'Tatelecom' : 'Outro');
+    setTimeout(() => {
+        if (isTatelecom && !document.getElementById('container-automacao-tatelecom')) {
+            injetarBotoesTatelecom();
+        }
+        if (isHistorico && !document.getElementById('btn-portabilidade')) {
+            injetarBotaoPortabilidade();
+        }
+    }, 3000);
+
+    console.log('🚀 Assistente de Cadastro Tatelecom v1.3.0 carregado!');
+    console.log('📌 Modo:', isERP ? 'ERP' : isTatelecom ? 'Tatelecom' : isHistorico ? 'Histórico' : 'Outro');
     console.log('🔇 Sem notificações - feedback visual nos botões');
     console.log('📊 Logs disponíveis no console (F12)');
 })();
