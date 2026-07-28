@@ -5,6 +5,8 @@
 // @description  Alertas automáticos de planos, auditor de estoque e esconder botão
 // @author       Alisson Guerreiro
 // @match        https://erp.osirnet.com.br/ui/*/legacy/operations/*
+// @match        https://erp.osirnet.com.br/*
+// @match        *://*.osirnet.com.br/*
 // @grant        none
 // @run-at       document-end
 // @homepage     https://github.com/AlissonGuerreiro/meus-scripts
