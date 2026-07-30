@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Osir - Assistente de Provisionamento
 // @namespace    http://tampermonkey.net/
-// @version      5.6.1
+// @version      5.6.2
 // @description  Provisionamento - Fila e Contrato
 // @author       Alisson Guerreiro
 // @match        https://atendimento.osir.net.br/inviabilidade/huawei/filaProvisionamento.php
@@ -21,7 +21,7 @@
     // CONFIGURAÇÕES GERAIS
     // =========================================================================
     const DEBUG = true;
-    const SCRIPT_VERSION = '5.6.0';
+    const SCRIPT_VERSION = '5.6.2';
 
     const URL_ATENDIMENTO = "filaProvisionamento.php";
     const URL_CONTRATO_VOALLE = "authentication_contracts/contract_panel";
@@ -685,6 +685,9 @@
         return "80";
     }
 
+    // =========================================================================
+    // FUNÇÃO DETERMINAR TIPO EQUIPAMENTO - CORRIGIDA PARA RAISECOM
+    // =========================================================================
     function determinarTipoEquipamento(tipoProvisionamento, serial) {
         const tipoLower = (tipoProvisionamento || "").toLowerCase().trim();
         const serialUpper = (serial || "").toUpperCase();
@@ -702,7 +705,18 @@
             return 'Equipamento Desconhecido';
         }
 
-        if (fabricante === 'Raisecom') return 'Raisecom Router';
+        if (fabricante === 'Raisecom') {
+            // 🔥 NOVA LÓGICA PARA RAISECOM
+            if (serialUpper.startsWith("RCMG1")) {
+                return 'Raisecom Bridge';  // RCMG1 sempre Bridge
+            } else if (serialUpper.startsWith("RCMG3")) {
+                return 'Raisecom Router';  // RCMG3 sempre Router
+            } else {
+                // Fallback: usa o tipo do provisionamento para outros RCMG
+                return tipoLower === 'b' ? 'Raisecom Bridge' : 'Raisecom Router';
+            }
+        }
+
         if (fabricante === 'ZTE') return 'ZTE Bridge';
         if (fabricante === 'Huawei') {
             return tipoLower === 'b' ? 'Huawei Bridge' : 'Huawei Router';
@@ -711,12 +725,22 @@
         return 'Equipamento Desconhecido';
     }
 
+    // =========================================================================
+    // FUNÇÃO PRECISA AUTENTICACAO - CORRIGIDA PARA RAISECOM
+    // =========================================================================
     function precisaAutenticacao(tipoProvisionamento, serial) {
         const tipo = (tipoProvisionamento || "").toLowerCase().trim();
         const serialUpper = (serial || "").toUpperCase();
 
         if (tipo === "b") return true;
         if (tipo === "r") return false;
+        
+        // Raisecom RCMG1 (Bridge) - autentica
+        if (serialUpper.startsWith("RCMG1")) return true;
+        
+        // Raisecom RCMG3 (Router) - não autentica
+        if (serialUpper.startsWith("RCMG3")) return false;
+        
         if (serialUpper.startsWith("ZTEG") || serialUpper.startsWith("5A54")) return false;
         if (serialUpper.startsWith("4857") || serialUpper.startsWith("HWTC")) return false;
         if (serialUpper.startsWith("RCMG")) return false;
@@ -1481,10 +1505,8 @@
             const stringSecreta = montarStringOSIRDATA(dadosDaCaixinha);
 
             navigator.clipboard.writeText(stringSecreta).then(() => {
-                // 1. Preenche os campos do formulário
                 preencherFormularioContrato(dadosDaCaixinha);
 
-                // 👇 2. LIMPA O MAC ADDRESS
                 const campoMac = document.getElementById('AuthenticationContractMac');
                 if (campoMac && campoMac.value && campoMac.value.trim() !== '') {
                     campoMac.value = '';
@@ -1503,7 +1525,6 @@
             }).catch(() => {
                 preencherFormularioContrato(dadosDaCaixinha);
 
-                // 👇 Tenta limpar o MAC mesmo se o clipboard falhar
                 const campoMac = document.getElementById('AuthenticationContractMac');
                 if (campoMac && campoMac.value && campoMac.value.trim() !== '') {
                     campoMac.value = '';
@@ -1729,7 +1750,6 @@
         preencherComplementoNoFormulario();
         atualizarPreviewConfig();
 
-        // 👇 LIMPA O MAC ADDRESS
         const campoMac = document.getElementById('AuthenticationContractMac');
         if (campoMac && campoMac.value && campoMac.value.trim() !== '') {
             campoMac.value = '';
@@ -1775,8 +1795,12 @@
             modeloAutomatico = 'Huawei Bridge';
         } else if (serialUpper.startsWith('ZTEG') || serialUpper.startsWith('5A544') || serialUpper.startsWith('ZTEGD')) {
             modeloAutomatico = 'ZTE Bridge';
+        } else if (serialUpper.startsWith('RCMG1')) {
+            modeloAutomatico = 'Raisecom Bridge';  // RCMG1 → Bridge
+        } else if (serialUpper.startsWith('RCMG3')) {
+            modeloAutomatico = 'Raisecom Router';  // RCMG3 → Router
         } else if (serialUpper.startsWith('RCMG')) {
-            modeloAutomatico = 'Raisecom Router';
+            modeloAutomatico = 'Raisecom Router';  // Outros RCMG → Router (fallback)
         }
 
         const precisaZTE = serialUpper.startsWith('5A544') || serialUpper.startsWith('ZTEGD');
@@ -1785,7 +1809,6 @@
         preencherComplementoNoFormulario();
         atualizarPreviewConfig();
 
-        // 👇 LIMPA O MAC ADDRESS
         const campoMac = document.getElementById('AuthenticationContractMac');
         if (campoMac && campoMac.value && campoMac.value.trim() !== '') {
             campoMac.value = '';
@@ -1813,6 +1836,7 @@
         const modelosMap = {
             'Huawei Bridge': 'modelo-huawei-bridge',
             'ZTE Bridge': 'modelo-zte-bridge',
+            'Raisecom Bridge': 'modelo-raisecom-bridge',
             'Raisecom Router': 'modelo-raisecom-router'
         };
         const modeloId = modelosMap[modeloAutomatico];
@@ -2567,5 +2591,7 @@
     log('✅ MAC Address limpo ao clicar em Sincronizar ou Atualizar');
     log('✅ Cache de DOM, storage seguro, funções unificadas');
     log('✅ Cleanup de intervals/observers no beforeunload');
+    log('✅ RAISECOM: RCMG1 → Bridge | RCMG3 → Router');
+    log('✅ Autenticação diferenciada para RCMG1 (autentica) e RCMG3 (não autentica)');
 
 })();
