@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Osir - Assistente de Provisionamento
 // @namespace    http://tampermonkey.net/
-// @version      5.6.2
+// @version      5.7.0
 // @description  Provisionamento - Fila e Contrato
 // @author       Alisson Guerreiro
 // @match        https://atendimento.osir.net.br/inviabilidade/huawei/filaProvisionamento.php
@@ -21,7 +21,7 @@
     // CONFIGURAÇÕES GERAIS
     // =========================================================================
     const DEBUG = true;
-    const SCRIPT_VERSION = '5.6.2';
+    const SCRIPT_VERSION = '5.7.0';
 
     const URL_ATENDIMENTO = "filaProvisionamento.php";
     const URL_CONTRATO_VOALLE = "authentication_contracts/contract_panel";
@@ -686,14 +686,17 @@
     }
 
     // =========================================================================
-    // FUNÇÃO DETERMINAR TIPO EQUIPAMENTO - CORRIGIDA PARA RAISECOM
+    // FUNÇÃO DETERMINAR TIPO EQUIPAMENTO - CORRIGIDA PARA EKATECH
     // =========================================================================
     function determinarTipoEquipamento(tipoProvisionamento, serial) {
         const tipoLower = (tipoProvisionamento || "").toLowerCase().trim();
         const serialUpper = (serial || "").toUpperCase();
 
         let fabricante = '';
-        if (serialUpper.startsWith("4857") || serialUpper.startsWith("HWTC")) {
+
+        // Huawei (incluindo Ekatech 53484 e 48575)
+        if (serialUpper.startsWith("4857") || serialUpper.startsWith("HWTC") ||
+            serialUpper.startsWith("53484") || serialUpper.startsWith("48575")) {
             fabricante = 'Huawei';
         } else if (serialUpper.startsWith("ZTEG") || serialUpper.startsWith("5A54")) {
             fabricante = 'ZTE';
@@ -706,19 +709,22 @@
         }
 
         if (fabricante === 'Raisecom') {
-            // 🔥 NOVA LÓGICA PARA RAISECOM
             if (serialUpper.startsWith("RCMG1")) {
-                return 'Raisecom Bridge';  // RCMG1 sempre Bridge
+                return 'Raisecom Bridge';
             } else if (serialUpper.startsWith("RCMG3")) {
-                return 'Raisecom Router';  // RCMG3 sempre Router
+                return 'Raisecom Router';
             } else {
-                // Fallback: usa o tipo do provisionamento para outros RCMG
                 return tipoLower === 'b' ? 'Raisecom Bridge' : 'Raisecom Router';
             }
         }
 
         if (fabricante === 'ZTE') return 'ZTE Bridge';
+
         if (fabricante === 'Huawei') {
+            // Ekatech 53484 é sempre Bridge
+            if (serialUpper.startsWith("53484") || serialUpper.startsWith("48575")) {
+                return 'Ekatech Bridge';
+            }
             return tipoLower === 'b' ? 'Huawei Bridge' : 'Huawei Router';
         }
 
@@ -726,7 +732,7 @@
     }
 
     // =========================================================================
-    // FUNÇÃO PRECISA AUTENTICACAO - CORRIGIDA PARA RAISECOM
+    // FUNÇÃO PRECISA AUTENTICACAO - CORRIGIDA PARA EKATECH
     // =========================================================================
     function precisaAutenticacao(tipoProvisionamento, serial) {
         const tipo = (tipoProvisionamento || "").toLowerCase().trim();
@@ -734,15 +740,20 @@
 
         if (tipo === "b") return true;
         if (tipo === "r") return false;
-        
+
         // Raisecom RCMG1 (Bridge) - autentica
         if (serialUpper.startsWith("RCMG1")) return true;
-        
+
         // Raisecom RCMG3 (Router) - não autentica
         if (serialUpper.startsWith("RCMG3")) return false;
-        
+
+        // Huawei/Ekatech - Bridge autentica, Router não
+        if (serialUpper.startsWith("4857") || serialUpper.startsWith("HWTC") ||
+            serialUpper.startsWith("53484") || serialUpper.startsWith("48575")) {
+            return tipo === 'b';
+        }
+
         if (serialUpper.startsWith("ZTEG") || serialUpper.startsWith("5A54")) return false;
-        if (serialUpper.startsWith("4857") || serialUpper.startsWith("HWTC")) return false;
         if (serialUpper.startsWith("RCMG")) return false;
         if (serialUpper.startsWith("5A544") || serialUpper.startsWith("ZTEGD")) return true;
         return false;
@@ -1625,11 +1636,17 @@
 
     function getTipoProvisionamentoPorModelo(modeloLabel) {
         const modelosBridge = [
-            'Huawei Bridge', 'ZTE Bridge', 'Raisecom Bridge',
-            'Raisecom Bridge (Des.)', 'Ektech Bridge'
+            'Huawei Bridge',
+            'ZTE Bridge',
+            'Raisecom Bridge',
+            'Raisecom Bridge (Des.)',
+            'Ektech Bridge',
+            'Ekatech Bridge'
         ];
         const modelosRouter = [
-            'Huawei Router', 'Raisecom Router', 'ZTE Router'
+            'Huawei Router',
+            'Raisecom Router',
+            'ZTE Router'
         ];
 
         if (modelosBridge.includes(modeloLabel)) return 'b';
@@ -1644,6 +1661,7 @@
         const modelosMap = {
             'huawei-router': 'Huawei Router',
             'huawei-bridge': 'Huawei Bridge',
+            'ekatech-bridge': 'Ekatech Bridge',
             'raisecom-router': 'Raisecom Router',
             'raisecom-bridge': 'Raisecom Bridge',
             'raisecom-bridge-desativada': 'Raisecom Bridge (Desativada)',
@@ -1793,14 +1811,16 @@
         let modeloAutomatico = 'Bridge';
         if (serialUpper.startsWith('4857') || serialUpper.startsWith('HWTC')) {
             modeloAutomatico = 'Huawei Bridge';
+        } else if (serialUpper.startsWith('53484') || serialUpper.startsWith('48575')) {
+            modeloAutomatico = 'Ekatech Bridge';
         } else if (serialUpper.startsWith('ZTEG') || serialUpper.startsWith('5A544') || serialUpper.startsWith('ZTEGD')) {
             modeloAutomatico = 'ZTE Bridge';
         } else if (serialUpper.startsWith('RCMG1')) {
-            modeloAutomatico = 'Raisecom Bridge';  // RCMG1 → Bridge
+            modeloAutomatico = 'Raisecom Bridge';
         } else if (serialUpper.startsWith('RCMG3')) {
-            modeloAutomatico = 'Raisecom Router';  // RCMG3 → Router
+            modeloAutomatico = 'Raisecom Router';
         } else if (serialUpper.startsWith('RCMG')) {
-            modeloAutomatico = 'Raisecom Router';  // Outros RCMG → Router (fallback)
+            modeloAutomatico = 'Raisecom Router';
         }
 
         const precisaZTE = serialUpper.startsWith('5A544') || serialUpper.startsWith('ZTEGD');
@@ -1837,7 +1857,8 @@
             'Huawei Bridge': 'modelo-huawei-bridge',
             'ZTE Bridge': 'modelo-zte-bridge',
             'Raisecom Bridge': 'modelo-raisecom-bridge',
-            'Raisecom Router': 'modelo-raisecom-router'
+            'Raisecom Router': 'modelo-raisecom-router',
+            'Ekatech Bridge': 'modelo-ekatech-bridge'
         };
         const modeloId = modelosMap[modeloAutomatico];
         if (modeloId) {
@@ -1978,6 +1999,7 @@
         const modelos = [
             { id: 'huawei-router', label: 'Huawei Router' },
             { id: 'huawei-bridge', label: 'Huawei Bridge' },
+            { id: 'ekatech-bridge', label: 'Ekatech Bridge' },
             { id: 'raisecom-router', label: 'Raisecom Router' },
             { id: 'raisecom-bridge', label: 'Raisecom Bridge' },
             { id: 'raisecom-bridge-desativada', label: 'Raisecom Bridge (Des.)' },
@@ -2593,5 +2615,7 @@
     log('✅ Cleanup de intervals/observers no beforeunload');
     log('✅ RAISECOM: RCMG1 → Bridge | RCMG3 → Router');
     log('✅ Autenticação diferenciada para RCMG1 (autentica) e RCMG3 (não autentica)');
+    log('✅ EKATECH: Serial 53484 e 48575 reconhecidos como Ekatech Bridge');
+    log('✅ EKATECH: Auto-detecção de serial 53484/48575');
 
 })();
