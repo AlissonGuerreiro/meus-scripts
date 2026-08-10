@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Osir - Assistente de Provisionamento
 // @namespace    http://tampermonkey.net/
-// @version      7.0.0
+// @version      7.1.0
 // @description  Provisionamento - Fila e Contrato
 // @author       Alisson Guerreiro
 // @match        https://atendimento.osir.net.br/inviabilidade/huawei/filaProvisionamento.php
@@ -17,11 +17,8 @@
 (function() {
     'use strict';
 
-    // =========================================================================
-    // CONFIGURAÇÕES GERAIS
-    // =========================================================================
     const DEBUG = true;
-    const SCRIPT_VERSION = '.7.0.0';
+    const SCRIPT_VERSION = '7.1.0';
 
     const URL_ATENDIMENTO = "filaProvisionamento.php";
     const URL_CONTRATO_VOALLE = "authentication_contracts/contract_panel";
@@ -40,9 +37,6 @@
         FEEDBACK_BOTAO_TIMEOUT: 1500
     };
 
-    // =========================================================================
-    // FUNÇÕES UTILITÁRIAS
-    // =========================================================================
     function log(...args) {
         if (DEBUG) console.log(...args);
     }
@@ -51,7 +45,6 @@
         if (DEBUG) console.error(...args);
     }
 
-    // Wrapper seguro para localStorage
     const storage = {
         get(key) {
             try { return localStorage.getItem(key); } catch (e) { return null; }
@@ -77,9 +70,6 @@
         return new Promise(resolve => setTimeout(resolve, ms));
     }
 
-    // =========================================================================
-    // CACHE DE ELEMENTOS DO DOM
-    // =========================================================================
     const DOM_CACHE = new Map();
     const DOM_CACHE_TTL = 5000;
 
@@ -99,9 +89,6 @@
         DOM_CACHE.clear();
     }
 
-    // =========================================================================
-    // FUNÇÃO DE NORMALIZAÇÃO DE NOMES DE PE (CENTRALIZADA)
-    // =========================================================================
     function normalizarNomePE(nomePE) {
         if (!nomePE) return "";
         let normalizado = nomePE.toUpperCase().trim();
@@ -111,9 +98,6 @@
         return normalizado;
     }
 
-    // =========================================================================
-    // CONFIGURAÇÕES DA JANELA FLUTUANTE
-    // =========================================================================
     const CONFIG_JANELA = {
         larguraMin: 250,
         larguraMax: 500,
@@ -133,9 +117,6 @@
         fonte: CONFIG_JANELA.fontePadrao
     };
 
-    // =========================================================================
-    // ESTADO DO WIFI PRO (COM SINCRONIZAÇÃO AUTOMÁTICA)
-    // =========================================================================
     const wifiProState = {
         _ativo: false,
         get ativo() { return this._ativo; },
@@ -145,15 +126,11 @@
         }
     };
 
-    // Inicializa do localStorage
     const wifiProSalvo = storage.get('osir_wifi_pro_ativo');
     if (wifiProSalvo !== null) {
         wifiProState._ativo = wifiProSalvo === 'true';
     }
 
-    // =========================================================================
-    // TEMA (CLARO/ESCURO)
-    // =========================================================================
     const temaState = {
         _tema: 'claro',
         get tema() { return this._tema; },
@@ -164,15 +141,11 @@
         }
     };
 
-    // Inicializa do localStorage
     const temaSalvo = storage.get('osir_tema');
     if (temaSalvo !== null && (temaSalvo === 'claro' || temaSalvo === 'escuro')) {
         temaState._tema = temaSalvo;
     }
 
-    // =========================================================================
-    // FUNÇÕES DE TEMA
-    // =========================================================================
     function alternarTema() {
         const novoTema = temaState.tema === 'claro' ? 'escuro' : 'claro';
         temaState.tema = novoTema;
@@ -387,9 +360,6 @@
         }
     }
 
-    // =========================================================================
-    // FUNÇÃO PARA LIMPAR MAC ADDRESS
-    // =========================================================================
     function limparMacAddress() {
         const campoMac = document.getElementById('AuthenticationContractMac');
         if (campoMac) {
@@ -411,9 +381,6 @@
         }
     }
 
-    // =========================================================================
-    // FUNÇÕES DA JANELA
-    // =========================================================================
     function redimensionarJanela(deltaLargura, deltaAltura, deltaFonte) {
         const janela = document.getElementById('osir-floating-window');
         if (!janela) return;
@@ -451,9 +418,6 @@
     }
     carregarPreferencias();
 
-    // =========================================================================
-    // FUNÇÃO PARA TORNAR A JANELA ARRASTÁVEL
-    // =========================================================================
     function tornarJanelaArrastavel(janela) {
         let isDragging = false;
         let currentX = 0;
@@ -572,9 +536,6 @@
         };
     }
 
-    // =========================================================================
-    // EXTRAIR DADOS DO CLIPBOARD
-    // =========================================================================
     function extrairDadosDoClipboard(texto) {
         if (!texto || !texto.trim().startsWith("OSIRDATA||")) return null;
 
@@ -622,9 +583,6 @@
         };
     }
 
-    // =========================================================================
-    // MONTAR STRING OSIRDATA
-    // =========================================================================
     function montarStringOSIRDATA(dados) {
         const portaWeb = dados.portaWeb || '80';
         const sinalStr = dados.sinal || "";
@@ -633,9 +591,6 @@
         return `OSIRDATA||${dados.serial}||${dados.ssid}||${dados.senha}||${dados.slot}||${dados.porta}||${dados.id}||${dados.contrato}||${dados.vlan}||${dados.pontoAcesso}||${dados.olt}||${dados.tipoProvisionamento}||${dados.telefonia.numero || ''}||${dados.telefonia.senha || ''}||${dados.telefonia.ip || ''}||${portaWeb}||${sinalStr}||${wifiProStr}`;
     }
 
-    // =========================================================================
-    // CÁLCULO VLAN (REFATORADO)
-    // =========================================================================
     function calcularVlanEspecial(pontoAcesso) {
         const pa = normalizarNomePE(pontoAcesso);
 
@@ -685,31 +640,39 @@
         return "80";
     }
 
-    // =========================================================================
-    // FUNÇÃO DETERMINAR TIPO EQUIPAMENTO - CORRIGIDA PARA EKTECH
-    // =========================================================================
     function determinarTipoEquipamento(tipoProvisionamento, serial) {
         const tipoLower = (tipoProvisionamento || "").toLowerCase().trim();
         const serialUpper = (serial || "").toUpperCase();
 
+        const EXCECOES = {
+            '5A544547D97A26F4': 'ZTE Bridge',
+            'ZTEGD97A60FE': 'ZTE Bridge',
+            '52434D47199888E8': 'Raisecom Bridge',
+            'RCMG19891CC9': 'Raisecom Bridge',
+            'RCMG39891CC9': 'Raisecom Router',
+            '53484C4E052687B0': 'Ektech Bridge',
+            '485754432C9F2CAA': 'Huawei Router'
+        };
+        if (EXCECOES[serialUpper]) return EXCECOES[serialUpper];
+
         let fabricante = '';
 
-        // Huawei (incluindo Ektech 53484 e 48575)
         if (serialUpper.startsWith("4857") || serialUpper.startsWith("HWTC") ||
             serialUpper.startsWith("53484") || serialUpper.startsWith("48575")) {
             fabricante = 'Huawei';
         } else if (serialUpper.startsWith("ZTEG") || serialUpper.startsWith("5A54")) {
             fabricante = 'ZTE';
-        } else if (serialUpper.startsWith("RCMG")) {
+        } else if (serialUpper.startsWith("RCMG") || serialUpper.startsWith("52434")) {
             fabricante = 'Raisecom';
         } else if (serialUpper.startsWith("5A544") || serialUpper.startsWith("ZTEGD")) {
             return 'ZTE Bridge';
         } else {
+            console.warn(`⚠️ SN desconhecido: ${serial}`);
             return 'Equipamento Desconhecido';
         }
 
         if (fabricante === 'Raisecom') {
-            if (serialUpper.startsWith("RCMG1")) {
+            if (serialUpper.startsWith("RCMG1") || serialUpper.startsWith("52434")) {
                 return 'Raisecom Bridge';
             } else if (serialUpper.startsWith("RCMG3")) {
                 return 'Raisecom Router';
@@ -721,19 +684,23 @@
         if (fabricante === 'ZTE') return 'ZTE Bridge';
 
         if (fabricante === 'Huawei') {
-            // Ektech 53484 é sempre Bridge
-            if (serialUpper.startsWith("53484") || serialUpper.startsWith("48575")) {
+            if (serialUpper.startsWith("53484")) {
                 return 'Ektech Bridge';
             }
+
+            if (serialUpper.startsWith("48575")) {
+                if (tipoLower === 'b') return 'Ektech Bridge';
+                if (tipoLower === 'r') return 'Huawei Router';
+                if (serialUpper.length >= 16) return 'Huawei Router';
+                if (serialUpper.length <= 14) return 'Ektech Bridge';
+            }
+
             return tipoLower === 'b' ? 'Huawei Bridge' : 'Huawei Router';
         }
 
         return 'Equipamento Desconhecido';
     }
 
-    // =========================================================================
-    // FUNÇÃO PRECISA AUTENTICACAO - CORRIGIDA PARA EKTECH
-    // =========================================================================
     function precisaAutenticacao(tipoProvisionamento, serial) {
         const tipo = (tipoProvisionamento || "").toLowerCase().trim();
         const serialUpper = (serial || "").toUpperCase();
@@ -741,13 +708,9 @@
         if (tipo === "b") return true;
         if (tipo === "r") return false;
 
-        // Raisecom RCMG1 (Bridge) - autentica
         if (serialUpper.startsWith("RCMG1")) return true;
-
-        // Raisecom RCMG3 (Router) - não autentica
         if (serialUpper.startsWith("RCMG3")) return false;
 
-        // Huawei/Ektech - Bridge autentica, Router não
         if (serialUpper.startsWith("4857") || serialUpper.startsWith("HWTC") ||
             serialUpper.startsWith("53484") || serialUpper.startsWith("48575")) {
             return tipo === 'b';
@@ -759,9 +722,6 @@
         return false;
     }
 
-    // =========================================================================
-    // FORMATAR PE + SLOT + PORTA
-    // =========================================================================
     function formatarPESlotPorta(dados) {
         let pe = dados.pontoAcesso || dados.olt || '';
 
@@ -793,9 +753,6 @@
         return `${pe} ${slot} ${porta}`;
     }
 
-    // =========================================================================
-    // CAPTURAR DADOS DO PROVISIONAMENTO
-    // =========================================================================
     function capturarDadosDoProvisionamento() {
         const dados = {
             serial: "XX",
@@ -897,9 +854,6 @@
         return dados;
     }
 
-    // =========================================================================
-    // MONTAR COMPLEMENTO (FUNÇÃO UNIFICADA)
-    // =========================================================================
     function montarComplementoBase(opcoes) {
         const {
             wifiPro = false,
@@ -998,9 +952,6 @@
         });
     }
 
-    // =========================================================================
-    // PREENCHER FORMULÁRIO DO CONTRATO
-    // =========================================================================
     function preencherFormularioContrato(dados) {
         const mapeamento = [
             { id: 'AuthenticationContractEquipmentSerialNumber', valor: dados.serial },
@@ -1048,9 +999,6 @@
         }
     }
 
-    // =========================================================================
-    // FUNÇÃO PARA CRIAR BOTÃO ESTILIZADO (REUTILIZÁVEL)
-    // =========================================================================
     function criarBotaoEstilizado(texto, cor, onClick, extras = {}) {
         const btn = document.createElement('button');
         btn.textContent = texto;
@@ -1071,9 +1019,6 @@
         return btn;
     }
 
-    // =========================================================================
-    // JANELA FLUTUANTE (DIREITA)
-    // =========================================================================
     let currentJanelaFlutuanteDados = null;
 
     function criarJanelaFlutuante(dados) {
@@ -1469,9 +1414,6 @@
         previewTexto.textContent = complementoPreview;
         conteudo.appendChild(previewTexto);
 
-        // =====================================================================
-        // BOTÃO SINCRONIZAR (COM LIMPEZA DO MAC)
-        // =====================================================================
         const btnSincronizar = criarBotaoEstilizado('🔄 Sincronizar', '#8b5cf6', function() {
             const dadosDaCaixinha = {
                 serial: dados.serial || "XX",
@@ -1554,9 +1496,6 @@
         }, { width: '100%', marginTop: '8px', fontSize: `${Math.round(estadoJanela.fonte * 0.9)}px`, border: '1px solid #7c3aed' });
         conteudo.appendChild(btnSincronizar);
 
-        // =====================================================================
-        // BOTÃO COMPLEMENTO
-        // =====================================================================
         const btnGerarComplemento = criarBotaoEstilizado('📝 Complemento', '#e11d48', function() {
             const dadosAtuais = currentJanelaFlutuanteDados || dados;
 
@@ -1599,9 +1538,6 @@
         setTimeout(() => aplicarTema(temaState.tema), 50);
     }
 
-    // =========================================================================
-    // VERIFICAR DADOS E MOSTRAR JANELA
-    // =========================================================================
     async function verificarDadosEMostrarJanela() {
         let dadosAmarelo = null;
 
@@ -1630,17 +1566,12 @@
         criarJanelaFlutuante(dadosAmarelo);
     }
 
-    // =========================================================================
-    // JANELA DA ESQUERDA (CONFIGURAÇÃO)
-    // =========================================================================
-
     function getTipoProvisionamentoPorModelo(modeloLabel) {
         const modelosBridge = [
             'Huawei Bridge',
             'ZTE Bridge',
             'Raisecom Bridge',
             'Raisecom Bridge (Des.)',
-            'Ektech Bridge',
             'Ektech Bridge'
         ];
         const modelosRouter = [
@@ -1665,7 +1596,6 @@
             'raisecom-router': 'Raisecom Router',
             'raisecom-bridge': 'Raisecom Bridge',
             'raisecom-bridge-desativada': 'Raisecom Bridge (Desativada)',
-            'ektech-bridge': 'Ektech Bridge',
             'zte-bridge': 'ZTE Bridge',
             'zte-router': 'ZTE Router'
         };
@@ -1760,9 +1690,6 @@
         }
     }
 
-    // =====================================================================
-    // BOTÃO ATUALIZAR (JANELA ESQUERDA) COM LIMPEZA DO MAC
-    // =====================================================================
     function atualizarComplemento() {
         preencherVlanEPortaWeb();
         preencherComplementoNoFormulario();
@@ -1815,7 +1742,7 @@
             modeloAutomatico = 'Ektech Bridge';
         } else if (serialUpper.startsWith('ZTEG') || serialUpper.startsWith('5A544') || serialUpper.startsWith('ZTEGD')) {
             modeloAutomatico = 'ZTE Bridge';
-        } else if (serialUpper.startsWith('RCMG1')) {
+        } else if (serialUpper.startsWith('RCMG1') || serialUpper.startsWith('52434')) {
             modeloAutomatico = 'Raisecom Bridge';
         } else if (serialUpper.startsWith('RCMG3')) {
             modeloAutomatico = 'Raisecom Router';
@@ -2003,7 +1930,6 @@
             { id: 'raisecom-router', label: 'Raisecom Router' },
             { id: 'raisecom-bridge', label: 'Raisecom Bridge' },
             { id: 'raisecom-bridge-desativada', label: 'Raisecom Bridge (Des.)' },
-            { id: 'ektech-bridge', label: 'Ektech Bridge' },
             { id: 'zte-bridge', label: 'ZTE Bridge' },
             { id: 'zte-router', label: 'ZTE Router' }
         ];
@@ -2246,9 +2172,6 @@
         setTimeout(() => aplicarTemaConfig(temaState.tema), 50);
     }
 
-    // =========================================================================
-    // FILA DE PROVISIONAMENTO - INJEÇÃO DO BOTÃO E REMOÇÃO DO COMPLEMENTAR
-    // =========================================================================
     if (window.location.href.includes(URL_ATENDIMENTO)) {
 
         function removerBotaoComplementar() {
@@ -2362,9 +2285,6 @@
         window.addEventListener('beforeunload', () => clearInterval(intervaloInjecao));
     }
 
-    // =========================================================================
-    // PÁGINA DO CONTRATO
-    // =========================================================================
     if (window.location.href.includes(URL_CONTRATO_VOALLE) ||
         window.location.href.includes(URL_OPERACAO)) {
 
@@ -2468,9 +2388,6 @@
         });
     }
 
-    // =========================================================================
-    // JANELA DE ALERTA CONTRATO SALVO
-    // =========================================================================
     function exibirJanelaContratoSalvo(contratoId, data) {
         if (document.getElementById('osir-alerta-salvo')) return;
 
@@ -2590,32 +2507,7 @@
         }, TIMINGS.ALERTA_SALVO_TIMEOUT);
     }
 
-    // =========================================================================
-    // CLEANUP GERAL
-    // =========================================================================
     window.addEventListener('beforeunload', () => {
         clearDOMCache();
     });
-
-    // =========================================================================
-    // LOGS DE INICIALIZAÇÃO
-    // =========================================================================
-    log(`🚀 Osir Assistente v${SCRIPT_VERSION}`);
-    log('✅ VLAN 2200 para STL_CE_3/4, TTN_LAN, GAR, ROS');
-    log('✅ Normalização: STLDC 01→DC 1, STLDC 02→DC 2, PTN_NOVA→PTN');
-    log('✅ Botão 📋 para copiar PE+Slot+Porta');
-    log('✅ Botão Complementar removido');
-    log('✅ Botão Preparar Dados substituiu o Chamado');
-    log('✅ VLAN e Porta Web preenchem campos do contrato na janela esquerda');
-    log('✅ Splitter e Porta Splitter capturados no complemento');
-    log('✅ Sincronizar mantém dualidade: clipboard + formulário');
-    log('✅ Tema Claro/Escuro adicionado (🌙/☀️)');
-    log('✅ MAC Address limpo ao clicar em Sincronizar ou Atualizar');
-    log('✅ Cache de DOM, storage seguro, funções unificadas');
-    log('✅ Cleanup de intervals/observers no beforeunload');
-    log('✅ RAISECOM: RCMG1 → Bridge | RCMG3 → Router');
-    log('✅ Autenticação diferenciada para RCMG1 (autentica) e RCMG3 (não autentica)');
-    log('✅ EKTECH: Serial 53484 e 48575 reconhecidos como Ektech Bridge');
-    log('✅ EKTECH: Auto-detecção de serial 53484/48575');
-
 })();
