@@ -1,10 +1,13 @@
 // ==UserScript==
 // @name         Osir - Aproprias
 // @namespace    https://github.com/AlissonGuerreiro/meus-scripts
-// @version      7.0
+// @version      7.2
 // @description  Painel com loop, play, pause - Versão Super Rápida (0.5s)
 // @author       AlissonGuerreiro
 // @match        https://erp.osirnet.com.br/ui/*/legacy/operations/*
+// @match        https://erp.osirnet.com.br/legacy/operations/*
+// @match        *://*.osirnet.com.br/ui/*/legacy/operations/*
+// @match        *://*.osirnet.com.br/*
 // @grant        none
 // @run-at       document-end
 // @homepage     https://github.com/AlissonGuerreiro/meus-scripts
