@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Assistente de Cadastro Tatelecom
 // @namespace    https://github.com/SEU-USUARIO/assistente-cadastro-tatelecom
-// @version      1.3.0
+// @version      1.4.0
 // @description  Copia dados do ERP, preenche automaticamente no Tatelecom e gera máscara de portabilidade
 // @author       SEU-NOME
 // @match        https://erp.osirnet.com.br/*
@@ -740,6 +740,7 @@ Ciente da Data Prevista? SIM (X) NÃO ( )`;
             flex-wrap: wrap;
         `;
 
+        // BOTÃO COPIAR MÁSCARA
         const copyBtn = document.createElement('button');
         copyBtn.innerHTML = '📋 Copiar Máscara';
         copyBtn.style.cssText = `
@@ -763,11 +764,8 @@ Ciente da Data Prevista? SIM (X) NÃO ( )`;
             copyBtn.style.boxShadow = '0 4px 12px rgba(40, 167, 69, 0.3)';
         };
         copyBtn.onclick = () => {
-            // Seleciona o texto
             textarea.select();
             textarea.setSelectionRange(0, 99999);
-
-            // Tenta copiar
             try {
                 const sucesso = document.execCommand('copy');
                 if (sucesso) {
@@ -778,7 +776,6 @@ Ciente da Data Prevista? SIM (X) NÃO ( )`;
                         copyBtn.style.background = 'linear-gradient(135deg, #28a745, #20c997)';
                     }, 2000);
                 } else {
-                    // Fallback: usa o clipboard API
                     navigator.clipboard.writeText(mascara).then(() => {
                         copyBtn.innerHTML = '✅ Copiado!';
                         copyBtn.style.background = 'linear-gradient(135deg, #2e7d32, #1a8c4a)';
@@ -792,6 +789,97 @@ Ciente da Data Prevista? SIM (X) NÃO ( )`;
                 }
             } catch (e) {
                 alert('❌ Não foi possível copiar. Selecione o texto manualmente e use Ctrl+C.');
+            }
+        };
+
+        // BOTÃO TÉCNICO (COM A MESMA LÓGICA DO COPIAR MÁSCARA)
+        const tecnicoBtn = document.createElement('button');
+        tecnicoBtn.id = 'btn-tecnico';
+        tecnicoBtn.innerHTML = '🔧 Técnico';
+        tecnicoBtn.style.cssText = `
+            padding: 12px 28px;
+            background: linear-gradient(135deg, #17a2b8, #0d6efd);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 15px;
+            font-weight: 600;
+            transition: all 0.2s;
+            box-shadow: 0 4px 12px rgba(23, 162, 184, 0.3);
+        `;
+        tecnicoBtn.onmouseover = () => {
+            tecnicoBtn.style.transform = 'translateY(-2px)';
+            tecnicoBtn.style.boxShadow = '0 6px 20px rgba(23, 162, 184, 0.4)';
+        };
+        tecnicoBtn.onmouseout = () => {
+            tecnicoBtn.style.transform = 'translateY(0)';
+            tecnicoBtn.style.boxShadow = '0 4px 12px rgba(23, 162, 184, 0.3)';
+        };
+        tecnicoBtn.onclick = () => {
+            const dadosTecnico = extrairDadosHistorico();
+            if (!dadosTecnico || !dadosTecnico.nome) {
+                alert('❌ Não foi possível extrair os dados da página!');
+                return;
+            }
+
+            const textoTecnico = `📱 Número Provisório: ${dadosTecnico.telefone || 'N/A'}
+📞 Número Portado: ${dadosTecnico.numeroPortado || 'N/A'}
+📅 Data Prevista: ${dadosTecnico.dataPortabilidade || 'N/A'}`;
+
+            // MESMA LÓGICA DE COPIA DO BOTÃO COPIAR MÁSCARA
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(textoTecnico).then(() => {
+                    tecnicoBtn.innerHTML = '✅ Copiado!';
+                    tecnicoBtn.style.background = 'linear-gradient(135deg, #2e7d32, #1a8c4a)';
+                    setTimeout(() => {
+                        tecnicoBtn.innerHTML = '🔧 Técnico';
+                        tecnicoBtn.style.background = 'linear-gradient(135deg, #17a2b8, #0d6efd)';
+                    }, 2000);
+                    log('Dados do técnico copiados!', 'success');
+                }).catch(() => {
+                    // Fallback
+                    const textareaTemp = document.createElement('textarea');
+                    textareaTemp.value = textoTecnico;
+                    textareaTemp.style.position = 'fixed';
+                    textareaTemp.style.opacity = '0';
+                    document.body.appendChild(textareaTemp);
+                    textareaTemp.select();
+                    try {
+                        document.execCommand('copy');
+                        tecnicoBtn.innerHTML = '✅ Copiado!';
+                        tecnicoBtn.style.background = 'linear-gradient(135deg, #2e7d32, #1a8c4a)';
+                        setTimeout(() => {
+                            tecnicoBtn.innerHTML = '🔧 Técnico';
+                            tecnicoBtn.style.background = 'linear-gradient(135deg, #17a2b8, #0d6efd)';
+                        }, 2000);
+                        log('Dados do técnico copiados! (fallback)', 'success');
+                    } catch (err) {
+                        alert('❌ Não foi possível copiar. Selecione o texto manualmente e use Ctrl+C.');
+                    }
+                    document.body.removeChild(textareaTemp);
+                });
+            } else {
+                // Fallback para navegadores antigos
+                const textareaTemp = document.createElement('textarea');
+                textareaTemp.value = textoTecnico;
+                textareaTemp.style.position = 'fixed';
+                textareaTemp.style.opacity = '0';
+                document.body.appendChild(textareaTemp);
+                textareaTemp.select();
+                try {
+                    document.execCommand('copy');
+                    tecnicoBtn.innerHTML = '✅ Copiado!';
+                    tecnicoBtn.style.background = 'linear-gradient(135deg, #2e7d32, #1a8c4a)';
+                    setTimeout(() => {
+                        tecnicoBtn.innerHTML = '🔧 Técnico';
+                        tecnicoBtn.style.background = 'linear-gradient(135deg, #17a2b8, #0d6efd)';
+                    }, 2000);
+                    log('Dados do técnico copiados! (fallback)', 'success');
+                } catch (err) {
+                    alert('❌ Não foi possível copiar. Selecione o texto manualmente e use Ctrl+C.');
+                }
+                document.body.removeChild(textareaTemp);
             }
         };
 
@@ -819,6 +907,7 @@ Ciente da Data Prevista? SIM (X) NÃO ( )`;
         closeButton.onclick = () => overlay.remove();
 
         buttonContainer.appendChild(copyBtn);
+        buttonContainer.appendChild(tecnicoBtn);
         buttonContainer.appendChild(closeButton);
 
         container.appendChild(closeBtn);
@@ -1011,7 +1100,7 @@ Ciente da Data Prevista? SIM (X) NÃO ( )`;
 
         log('Página de histórico detectada!', 'info');
 
-        // Procura o container dos botões (onde está o botão de suporte)
+        // Procura o container dos botões
         let target = document.querySelector('.d-flex.justify-content-between .d-flex.gap-2');
         if (!target) {
             target = document.querySelector('.d-flex.justify-content-between');
@@ -1081,7 +1170,6 @@ Ciente da Data Prevista? SIM (X) NÃO ( )`;
         };
         btn.onclick = gerarMascaraPortabilidade;
 
-        // Insere antes do botão de suporte (btn-warning)
         const supportBtn = target.querySelector('.btn-warning');
         if (supportBtn) {
             target.insertBefore(btn, supportBtn);
@@ -1118,164 +1206,9 @@ Ciente da Data Prevista? SIM (X) NÃO ( )`;
         }
     }, 3000);
 
-    console.log('🚀 Assistente de Cadastro Tatelecom v1.3.0 carregado!');
+    console.log('🚀 Assistente de Cadastro Tatelecom v1.4.0 carregado!');
     console.log('📌 Modo:', isERP ? 'ERP' : isTatelecom ? 'Tatelecom' : isHistorico ? 'Histórico' : 'Outro');
     console.log('🔇 Sem notificações - feedback visual nos botões');
     console.log('📊 Logs disponíveis no console (F12)');
-
-    // ============================================
-    // NOVO: FUNÇÃO PARA COPIAR DADOS PARA TÉCNICO
-    // ============================================
-    function copiarDadosTecnico() {
-        const dados = extrairDadosHistorico();
-        if (!dados || !dados.nome) {
-            alert('❌ Não foi possível extrair os dados da página!');
-            return;
-        }
-
-        const textoTecnico = `📱 Número Provisório: ${dados.telefone || 'N/A'}
-📞 Número Portado: ${dados.numeroPortado || 'N/A'}
-📅 Data Prevista: ${dados.dataPortabilidade || 'N/A'}`;
-
-        // Tenta copiar usando a API moderna
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(textoTecnico).then(() => {
-                log('Dados do técnico copiados!', 'success');
-                // Feedback visual no botão
-                const btn = document.querySelector('#btn-tecnico');
-                if (btn) {
-                    const originalText = btn.textContent;
-                    btn.textContent = '✅ Copiado!';
-                    btn.style.backgroundColor = '#28a745';
-                    setTimeout(() => {
-                        btn.textContent = originalText;
-                        btn.style.backgroundColor = '#17a2b8';
-                    }, 2000);
-                }
-            }).catch(() => {
-                // Fallback
-                copiarTextoFallback(textoTecnico);
-            });
-        } else {
-            // Fallback para navegadores antigos
-            copiarTextoFallback(textoTecnico);
-        }
-    }
-
-    function copiarTextoFallback(texto) {
-        const textarea = document.createElement('textarea');
-        textarea.value = texto;
-        textarea.style.position = 'fixed';
-        textarea.style.opacity = '0';
-        document.body.appendChild(textarea);
-        textarea.select();
-        try {
-            document.execCommand('copy');
-            log('Dados do técnico copiados! (fallback)', 'success');
-            // Feedback visual no botão
-            const btn = document.querySelector('#btn-tecnico');
-            if (btn) {
-                const originalText = btn.textContent;
-                btn.textContent = '✅ Copiado!';
-                btn.style.backgroundColor = '#28a745';
-                setTimeout(() => {
-                    btn.textContent = originalText;
-                    btn.style.backgroundColor = '#17a2b8';
-                }, 2000);
-            }
-        } catch (err) {
-            log('Erro ao copiar dados do técnico', 'error');
-            console.error('Erro ao copiar:', err);
-            // Feedback visual de erro no botão
-            const btn = document.querySelector('#btn-tecnico');
-            if (btn) {
-                const originalText = btn.textContent;
-                btn.textContent = '❌ Erro!';
-                btn.style.backgroundColor = '#dc3545';
-                setTimeout(() => {
-                    btn.textContent = originalText;
-                    btn.style.backgroundColor = '#17a2b8';
-                }, 2000);
-            }
-        }
-        document.body.removeChild(textarea);
-    }
-
-    // ============================================
-    // NOVO: ADICIONAR BOTÃO TÉCNICO NA JANELA
-    // ============================================
-    function adicionarBotaoTecnico() {
-        // Aguarda a janela ser criada
-        const checkInterval = setInterval(() => {
-            const janela = document.getElementById('janela-mascara-portabilidade');
-            if (!janela) return;
-
-            // Verifica se o botão já existe
-            if (document.getElementById('btn-tecnico')) {
-                clearInterval(checkInterval);
-                return;
-            }
-
-            // Procura o container de botões (mesmo que o copyBtn usa)
-            const buttonContainer = janela.querySelector('[style*="margin-top: 18px"]');
-
-            if (buttonContainer) {
-                // Cria o botão técnico IGUAL ao copiar máscara
-                const btn = document.createElement('button');
-                btn.id = 'btn-tecnico';
-                btn.innerHTML = '🔧 Técnico';
-                btn.style.cssText = `
-                    padding: 12px 28px;
-                    background: linear-gradient(135deg, #17a2b8, #0d6efd);
-                    color: white;
-                    border: none;
-                    border-radius: 8px;
-                    cursor: pointer;
-                    font-size: 15px;
-                    font-weight: 600;
-                    transition: all 0.2s;
-                    box-shadow: 0 4px 12px rgba(23, 162, 184, 0.3);
-                `;
-                btn.onmouseover = () => {
-                    btn.style.transform = 'translateY(-2px)';
-                    btn.style.boxShadow = '0 6px 20px rgba(23, 162, 184, 0.4)';
-                };
-                btn.onmouseout = () => {
-                    btn.style.transform = 'translateY(0)';
-                    btn.style.boxShadow = '0 4px 12px rgba(23, 162, 184, 0.3)';
-                };
-                btn.onclick = copiarDadosTecnico;
-
-                // Adiciona ANTES do botão de fechar (que é o último)
-                const botoes = buttonContainer.querySelectorAll('button');
-                if (botoes.length > 0) {
-                    const fecharBtn = botoes[botoes.length - 1];
-                    buttonContainer.insertBefore(btn, fecharBtn);
-                } else {
-                    buttonContainer.appendChild(btn);
-                }
-
-                clearInterval(checkInterval);
-                log('✅ Botão Técnico adicionado na janela!', 'success');
-            }
-        }, 200);
-
-        setTimeout(() => clearInterval(checkInterval), 15000);
-    }
-
-    // ============================================
-    // NOVO: SOBRESCREVER A FUNÇÃO DE GERAR MÁSCARA
-    // ============================================
-    // Salva a função original
-    const originalGerarMascara = gerarMascaraPortabilidade;
-
-    // Cria a nova função que chama a original e depois adiciona o botão
-    gerarMascaraPortabilidade = function() {
-        // Chama a função original
-        originalGerarMascara();
-
-        // Adiciona o botão técnico após a janela ser criada
-        setTimeout(adicionarBotaoTecnico, 300);
-    };
 
 })();
