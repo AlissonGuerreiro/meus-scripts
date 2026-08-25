@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Osir - Aproprias
+// @name         Osir - Aproprias (Rústico)
 // @namespace    https://github.com/AlissonGuerreiro/meus-scripts
-// @version      7.2
-// @description  Painel com loop, play, pause - Versão Super Rápida (0.5s)
+// @version      8.0.0
+// @description  Painel com loop, play, pause - Versão Rústica
 // @author       AlissonGuerreiro
 // @match        https://erp.osirnet.com.br/ui/*/legacy/operations/*
 // @match        https://erp.osirnet.com.br/legacy/operations/*
@@ -19,76 +19,292 @@
 (function() {
     'use strict';
 
-    // ===== CONFIGURAÇÕES SUPER RÁPIDAS =====
-    const DELAYS = {
-        APOS_SELECIONAR: 1000,
-        APOS_CLICAR: 1000,
-        APOS_CONFIRMAR: 1200
+    // ============ CONFIG ============
+    const CFG = {
+        DELAY_SELECIONAR: 1100,
+        DELAY_CLICAR: 1100,
+        DELAY_CONFIRMAR: 1300,
+        DELAY_ENTRE_LOOPS: 2300,
+        MAX_TENTATIVAS: 20,
+        INTERVALO: 1000
     };
-    const DELAY_ENTRE_LOOPS = 2200;
 
-    // ===== VARIÁVEIS DE CONTROLE =====
-    let executando = false;
-    let pausado = false;
-    let parar = false;
-    let contador = 0;
-    let totalDesejado = 0;
+    // ============ ESTADO ============
+    let estado = {
+        executando: false,
+        pausado: false,
+        parar: false,
+        contador: 0,
+        total: 0
+    };
 
-    function iniciarPainel() {
-        if (document.getElementById('meu-painel-automacao')) return;
-        if (!document.body) return;
+    let elementos = {};
 
-        if (window.self === window.top && document.querySelectorAll('iframe').length > 0) {
-            return;
+    // ============ UTILITÁRIOS ============
+    function log(msg) {
+        console.log('[Aproprias]', msg);
+    }
+
+    function getEl(id) {
+        return document.getElementById(id);
+    }
+
+    function delay(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    // ============ ATUALIZAR STATUS ============
+    function setStatus(msg, cor = '#555') {
+        const el = getEl('status-automacao');
+        if (el) {
+            el.innerText = msg;
+            el.style.color = cor;
+        }
+        log(msg);
+    }
+
+    // ============ ATUALIZAR BOTÕES ============
+    function atualizarBotoes() {
+        const { executando, pausado } = estado;
+        const play = getEl('btn-play');
+        const pause = getEl('btn-pause');
+        const stop = getEl('btn-stop');
+
+        if (play) {
+            play.innerText = executando ? '⏳ RODANDO' : '▶ PLAY';
+            play.style.backgroundColor = executando ? '#ff9800' : '#4CAF50';
+            play.disabled = executando;
         }
 
-        const tabelaExiste = document.getElementById('assignmentTasks') || document.querySelector('td');
-        if (!tabelaExiste) return;
+        if (pause) {
+            pause.innerText = (executando && pausado) ? '▶ RETOMAR' : '⏸ PAUSE';
+            pause.style.backgroundColor = '#FF9800';
+            pause.disabled = !executando;
+            pause.style.opacity = executando ? '1' : '0.5';
+        }
 
-        // ===== CRIA O PAINEL =====
+        if (stop) {
+            stop.disabled = !executando;
+            stop.style.opacity = executando ? '1' : '0.5';
+        }
+    }
+
+    function atualizarContador() {
+        const el = getEl('contador-feitos');
+        if (el) el.innerText = estado.contador;
+    }
+
+    // ============ EXECUTAR UMA APROPRIAÇÃO ============
+    async function executarApropriacao() {
+        const celulas = document.querySelectorAll('td');
+        let alvo = null;
+        let linha = null;
+
+        for (const el of celulas) {
+            const texto = el.textContent.replace(/\s+/g, ' ').trim();
+            if (texto.includes('Sem Atendente / COP Encerramentos')) {
+                alvo = el;
+                linha = el.closest('tr');
+                break;
+            }
+        }
+
+        if (!alvo || !linha) {
+            setStatus('❌ Nenhum "Sem Atendente" encontrado!', '#f44336');
+            return false;
+        }
+
+        const id = linha.getAttribute('data-id');
+        setStatus(`✅ ID: ${id}`, '#4CAF50');
+
+        alvo.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        await delay(200);
+
+        document.querySelectorAll('tr.row_selected').forEach(tr => tr.classList.remove('row_selected'));
+        linha.classList.add('row_selected');
+
+        ['mousedown', 'mouseup', 'click'].forEach(tipo => {
+            linha.dispatchEvent(new MouseEvent(tipo, { view: window, bubbles: true, cancelable: true }));
+        });
+
+        const primeiraCelula = linha.querySelector('td');
+        if (primeiraCelula) primeiraCelula.dispatchEvent(new Event('click', { bubbles: true }));
+
+        alvo.style.backgroundColor = '#c8e6c9';
+        linha.style.backgroundColor = '#e8f5e9';
+
+        await delay(CFG.DELAY_SELECIONAR);
+
+        const btn = getEl('change-responsible');
+        if (!btn) {
+            setStatus('❌ Botão não encontrado!', '#f44336');
+            return false;
+        }
+
+        if (btn.disabled) {
+            btn.disabled = false;
+            btn.style.opacity = '1';
+            btn.removeAttribute('disabled');
+            btn.classList.remove('disabled');
+        }
+
+        btn.click();
+        ['mousedown', 'mouseup', 'click'].forEach(tipo => {
+            btn.dispatchEvent(new MouseEvent(tipo, { view: window, bubbles: true, cancelable: true }));
+        });
+
+        const icone = btn.querySelector('i');
+        if (icone) icone.click();
+
+        setStatus('🔘 Apropriar', '#ff9800');
+        await delay(CFG.DELAY_CLICAR);
+
+        let btnSim = null;
+        const dialogs = document.querySelectorAll('.ui-dialog');
+        for (const dialog of dialogs) {
+            if (dialog.style.display !== 'none' && dialog.offsetParent !== null) {
+                const botoes = dialog.querySelectorAll('.ui-dialog-buttonpane .ui-button');
+                for (const botao of botoes) {
+                    if (botao.textContent.trim() === 'Sim') {
+                        btnSim = botao;
+                        break;
+                    }
+                }
+                if (btnSim) break;
+            }
+        }
+
+        if (btnSim) {
+            btnSim.click();
+            setStatus('✅ OK', '#4CAF50');
+        } else {
+            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+            document.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter' }));
+            setStatus('⚠️ Enter', '#ff9800');
+        }
+
+        linha.style.backgroundColor = '#a5d6a7';
+        linha.style.border = '2px solid green';
+
+        await delay(CFG.DELAY_CONFIRMAR);
+        return true;
+    }
+
+    // ============ LOOP PRINCIPAL ============
+    async function loopPrincipal() {
+        if (estado.executando) return;
+
+        const input = getEl('input-loop');
+        estado.total = parseInt(input?.value) || 1;
+        estado.contador = 0;
+        estado.executando = true;
+        estado.pausado = false;
+        estado.parar = false;
+
+        atualizarBotoes();
+        atualizarContador();
+        setStatus(`▶️ Iniciando ${estado.total}...`, '#ff9800');
+
+        for (let i = 0; i < estado.total; i++) {
+            if (estado.parar) {
+                setStatus('⏹️ Parado', '#f44336');
+                break;
+            }
+
+            while (estado.pausado) {
+                setStatus('⏸️ PAUSADO', '#f44336');
+                await delay(1000);
+                if (estado.parar) break;
+            }
+            if (estado.parar) break;
+
+            const sucesso = await executarApropriacao();
+            if (sucesso) {
+                estado.contador++;
+                atualizarContador();
+                setStatus(`✅ ${estado.contador}/${estado.total}`, '#4CAF50');
+            } else {
+                setStatus('❌ Falha', '#f44336');
+                break;
+            }
+
+            if (i < estado.total - 1) {
+                await delay(CFG.DELAY_ENTRE_LOOPS);
+            }
+        }
+
+        estado.executando = false;
+        estado.pausado = false;
+        atualizarBotoes();
+
+        if (!estado.parar) {
+            setStatus(`🏁 ${estado.contador} concluídos!`, '#4CAF50');
+        }
+    }
+
+    // ============ FUNÇÕES DOS BOTÕES ============
+    function onPlay() {
+        if (!estado.executando) loopPrincipal();
+    }
+
+    function onPause() {
+        if (estado.executando && !estado.pausado) {
+            estado.pausado = true;
+            setStatus('⏸️ PAUSADO', '#f44336');
+            atualizarBotoes();
+        } else if (estado.executando && estado.pausado) {
+            estado.pausado = false;
+            setStatus('▶️ Retomando...', '#ff9800');
+            atualizarBotoes();
+        }
+    }
+
+    function onStop() {
+        if (estado.executando) {
+            estado.parar = true;
+            estado.pausado = false;
+            setStatus('⏹️ Parando...', '#f44336');
+            atualizarBotoes();
+        }
+    }
+
+    // ============ CRIAR PAINEL ============
+    function criarPainel() {
+        if (getEl('meu-painel-automacao')) return;
+        if (!document.body) return;
+
+        if (window.self === window.top && document.querySelectorAll('iframe').length > 0) return;
+        if (!document.getElementById('assignmentTasks') && !document.querySelector('td')) return;
+
         const painel = document.createElement('div');
         painel.id = 'meu-painel-automacao';
-        painel.style.position = 'fixed';
-        painel.style.bottom = '250px';
-        painel.style.left = '10px';
-        painel.style.zIndex = '9999999';
-        painel.style.background = 'white';
-        painel.style.borderRadius = '12px';
-        painel.style.padding = '8px 10px';
-        painel.style.boxShadow = '0 4px 25px rgba(0,0,0,0.3)';
-        painel.style.fontFamily = 'Arial, sans-serif';
-        painel.style.fontSize = '13px';
-        painel.style.width = '220px';
-        painel.style.border = '2px solid #1a237e';
-        painel.style.cursor = 'move';
-        painel.style.userSelect = 'none';
+        painel.style.cssText = `
+            position:fixed;bottom:250px;left:10px;z-index:9999999;
+            background:white;border-radius:12px;padding:8px 10px;
+            box-shadow:0 4px 25px rgba(0,0,0,0.3);
+            font-family:Arial,sans-serif;font-size:13px;
+            width:220px;border:2px solid #1a237e;
+            cursor:move;user-select:none;
+        `;
 
-        // ===== TÍTULO =====
+        // Título
         const titulo = document.createElement('div');
         titulo.innerText = '☰ Arraste este Painel';
-        titulo.style.fontWeight = 'bold';
-        titulo.style.marginBottom = '12px';
-        titulo.style.color = '#1a237e';
-        titulo.style.fontSize = '12px';
-        titulo.style.textAlign = 'center';
-        titulo.style.borderBottom = '1px solid #e0e0e0';
-        titulo.style.paddingBottom = '6px';
+        titulo.style.cssText = `
+            font-weight:bold;margin-bottom:12px;color:#1a237e;
+            font-size:12px;text-align:center;border-bottom:1px solid #e0e0e0;
+            padding-bottom:6px;
+        `;
         painel.appendChild(titulo);
 
-        // ===== CONFIGURAÇÕES =====
-        const configDiv = document.createElement('div');
-        configDiv.style.display = 'flex';
-        configDiv.style.alignItems = 'center';
-        configDiv.style.gap = '8px';
-        configDiv.style.marginBottom = '10px';
+        // Configurações
+        const config = document.createElement('div');
+        config.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:10px;';
 
         const labelLoop = document.createElement('label');
         labelLoop.innerText = 'Loops:';
-        labelLoop.style.fontWeight = '600';
-        labelLoop.style.fontSize = '12px';
-        labelLoop.style.color = '#333';
-        labelLoop.style.minWidth = '45px';
-        configDiv.appendChild(labelLoop);
+        labelLoop.style.cssText = 'font-weight:600;font-size:12px;color:#333;min-width:45px;';
+        config.appendChild(labelLoop);
 
         const inputLoop = document.createElement('input');
         inputLoop.id = 'input-loop';
@@ -96,330 +312,73 @@
         inputLoop.value = '1';
         inputLoop.min = '1';
         inputLoop.max = '999';
-        inputLoop.style.width = '50px';
-        inputLoop.style.padding = '4px 6px';
-        inputLoop.style.border = '1px solid #ccc';
-        inputLoop.style.borderRadius = '4px';
-        inputLoop.style.fontSize = '13px';
-        configDiv.appendChild(inputLoop);
+        inputLoop.style.cssText = 'width:50px;padding:4px 6px;border:1px solid #ccc;border-radius:4px;font-size:13px;';
+        config.appendChild(inputLoop);
 
         const labelContador = document.createElement('label');
         labelContador.innerText = 'Feitos:';
-        labelContador.style.fontWeight = '600';
-        labelContador.style.fontSize = '12px';
-        labelContador.style.color = '#333';
-        labelContador.style.marginLeft = '10px';
-        labelContador.style.minWidth = '45px';
-        configDiv.appendChild(labelContador);
+        labelContador.style.cssText = 'font-weight:600;font-size:12px;color:#333;margin-left:10px;min-width:45px;';
+        config.appendChild(labelContador);
 
         const spanContador = document.createElement('span');
         spanContador.id = 'contador-feitos';
         spanContador.innerText = '0';
-        spanContador.style.fontWeight = 'bold';
-        spanContador.style.color = '#1a237e';
-        spanContador.style.fontSize = '14px';
-        configDiv.appendChild(spanContador);
+        spanContador.style.cssText = 'font-weight:bold;color:#1a237e;font-size:14px;';
+        config.appendChild(spanContador);
 
-        painel.appendChild(configDiv);
+        painel.appendChild(config);
 
-        // ===== STATUS =====
-        const statusDiv = document.createElement('div');
-        statusDiv.id = 'status-automacao';
-        statusDiv.style.fontSize = '11px';
-        statusDiv.style.color = '#555';
-        statusDiv.style.marginBottom = '10px';
-        statusDiv.style.padding = '4px 8px';
-        statusDiv.style.background = '#f5f5f5';
-        statusDiv.style.borderRadius = '4px';
-        statusDiv.style.minHeight = '18px';
-        statusDiv.innerText = '🟢 Pronto';
-        painel.appendChild(statusDiv);
+        // Status
+        const status = document.createElement('div');
+        status.id = 'status-automacao';
+        status.style.cssText = `
+            font-size:11px;color:#555;margin-bottom:10px;padding:4px 8px;
+            background:#f5f5f5;border-radius:4px;min-height:18px;
+        `;
+        status.innerText = '🟢 Pronto';
+        painel.appendChild(status);
 
-        function atualizarStatus(msg, cor = '#555') {
-            statusDiv.innerText = msg;
-            statusDiv.style.color = cor;
-            console.log(`📌 ${msg}`);
-        }
+        // Botões
+        const botoes = document.createElement('div');
+        botoes.style.cssText = 'display:flex;gap:6px;margin-bottom:8px;';
 
-        // ===== BOTÕES =====
-        const botoesDiv = document.createElement('div');
-        botoesDiv.style.display = 'flex';
-        botoesDiv.style.gap = '6px';
-        botoesDiv.style.marginBottom = '8px';
+        const botoesConfig = [
+            ['btn-play', '▶ PLAY', '#4CAF50', onPlay],
+            ['btn-pause', '⏸ PAUSE', '#FF9800', onPause],
+            ['btn-stop', '⏹ STOP', '#f44336', onStop]
+        ];
 
-        // Botão PLAY
-        const btnPlay = document.createElement('button');
-        btnPlay.id = 'btn-play';
-        btnPlay.innerText = '▶ PLAY';
-        btnPlay.style.flex = '1';
-        btnPlay.style.padding = '8px 12px';
-        btnPlay.style.backgroundColor = '#4CAF50';
-        btnPlay.style.color = 'white';
-        btnPlay.style.border = 'none';
-        btnPlay.style.borderRadius = '6px';
-        btnPlay.style.fontWeight = 'bold';
-        btnPlay.style.fontSize = '12px';
-        btnPlay.style.cursor = 'pointer';
-        btnPlay.style.transition = 'all 0.3s ease';
-        btnPlay.onmouseover = () => btnPlay.style.backgroundColor = '#388E3C';
-        btnPlay.onmouseout = () => btnPlay.style.backgroundColor = '#4CAF50';
-        botoesDiv.appendChild(btnPlay);
-
-        // Botão PAUSE
-        const btnPause = document.createElement('button');
-        btnPause.id = 'btn-pause';
-        btnPause.innerText = '⏸ PAUSE';
-        btnPause.style.flex = '1';
-        btnPause.style.padding = '8px 12px';
-        btnPause.style.backgroundColor = '#FF9800';
-        btnPause.style.color = 'white';
-        btnPause.style.border = 'none';
-        btnPause.style.borderRadius = '6px';
-        btnPause.style.fontWeight = 'bold';
-        btnPause.style.fontSize = '12px';
-        btnPause.style.cursor = 'pointer';
-        btnPause.style.transition = 'all 0.3s ease';
-        btnPause.style.opacity = '0.5';
-        btnPause.disabled = true;
-        btnPause.onmouseover = () => btnPause.style.backgroundColor = '#F57C00';
-        btnPause.onmouseout = () => btnPause.style.backgroundColor = '#FF9800';
-        botoesDiv.appendChild(btnPause);
-
-        // Botão STOP
-        const btnStop = document.createElement('button');
-        btnStop.id = 'btn-stop';
-        btnStop.innerText = '⏹ STOP';
-        btnStop.style.flex = '1';
-        btnStop.style.padding = '8px 12px';
-        btnStop.style.backgroundColor = '#f44336';
-        btnStop.style.color = 'white';
-        btnStop.style.border = 'none';
-        btnStop.style.borderRadius = '6px';
-        btnStop.style.fontWeight = 'bold';
-        btnStop.style.fontSize = '12px';
-        btnStop.style.cursor = 'pointer';
-        btnStop.style.transition = 'all 0.3s ease';
-        btnStop.style.opacity = '0.5';
-        btnStop.disabled = true;
-        btnStop.onmouseover = () => btnStop.style.backgroundColor = '#c62828';
-        btnStop.onmouseout = () => btnStop.style.backgroundColor = '#f44336';
-        botoesDiv.appendChild(btnStop);
-
-        painel.appendChild(botoesDiv);
-
-        // ===== FUNÇÃO DE DELAY =====
-        function delay(ms) {
-            return new Promise(resolve => setTimeout(resolve, ms));
-        }
-
-        // ===== FUNÇÃO PARA EXECUTAR UMA APROPRIAÇÃO =====
-        async function executarApropriacao() {
-            const celulas = document.querySelectorAll('td');
-            let itemAlvo = null;
-            let linhaAlvo = null;
-
-            for (let el of celulas) {
-                const textoLimpo = el.textContent.replace(/\s+/g, ' ').trim();
-                if (textoLimpo.includes('Sem Atendente / COP Encerramentos')) {
-                    itemAlvo = el;
-                    linhaAlvo = el.closest('tr');
-                    break;
-                }
+        botoesConfig.forEach(([id, label, cor, fn]) => {
+            const btn = document.createElement('button');
+            btn.id = id;
+            btn.innerText = label;
+            btn.style.cssText = `
+                flex:1;padding:8px 12px;background:${cor};color:white;
+                border:none;border-radius:6px;font-weight:bold;font-size:12px;
+                cursor:pointer;transition:all 0.3s ease;
+            `;
+            if (id !== 'btn-play') {
+                btn.style.opacity = '0.5';
+                btn.disabled = true;
             }
-
-            if (!itemAlvo || !linhaAlvo) {
-                atualizarStatus('❌ Nenhum "Sem Atendente" encontrado!', '#f44336');
-                return false;
-            }
-
-            const id = linhaAlvo.getAttribute('data-id');
-            atualizarStatus(`✅ ID: ${id}`, '#4CAF50');
-
-            itemAlvo.scrollIntoView({ block: 'center', behavior: 'smooth' });
-            await delay(200);
-
-            document.querySelectorAll('tr.row_selected').forEach(tr => {
-                tr.classList.remove('row_selected');
-            });
-            linhaAlvo.classList.add('row_selected');
-
-            ['mousedown', 'mouseup', 'click'].forEach(tipo => {
-                const evt = new MouseEvent(tipo, { view: window, bubbles: true, cancelable: true });
-                linhaAlvo.dispatchEvent(evt);
-            });
-            const primeiraCelula = linhaAlvo.querySelector('td');
-            if (primeiraCelula) {
-                primeiraCelula.dispatchEvent(new Event('click', { bubbles: true }));
-            }
-
-            itemAlvo.style.backgroundColor = '#c8e6c9';
-            linhaAlvo.style.backgroundColor = '#e8f5e9';
-
-            await delay(DELAYS.APOS_SELECIONAR);
-
-            const btn = document.getElementById('change-responsible');
-            if (!btn) {
-                atualizarStatus('❌ Botão não encontrado!', '#f44336');
-                return false;
-            }
-
-            if (btn.disabled) {
-                btn.disabled = false;
-                btn.style.opacity = '1';
-                btn.removeAttribute('disabled');
-                btn.classList.remove('disabled');
-            }
-
-            btn.click();
-            ['mousedown', 'mouseup', 'click'].forEach(tipo => {
-                const evt = new MouseEvent(tipo, { view: window, bubbles: true, cancelable: true });
-                btn.dispatchEvent(evt);
-            });
-            const icone = btn.querySelector('i');
-            if (icone) icone.click();
-
-            atualizarStatus('🔘 Apropriar', '#ff9800');
-            await delay(DELAYS.APOS_CLICAR);
-
-            let btnSim = null;
-            const dialogs = document.querySelectorAll('.ui-dialog');
-            for (const dialog of dialogs) {
-                if (dialog.style.display !== 'none' && dialog.offsetParent !== null) {
-                    const botoes = dialog.querySelectorAll('.ui-dialog-buttonpane .ui-button');
-                    for (const botao of botoes) {
-                        if (botao.textContent.trim() === 'Sim') {
-                            btnSim = botao;
-                            break;
-                        }
-                    }
-                    if (btnSim) break;
-                }
-            }
-
-            if (btnSim) {
-                btnSim.click();
-                atualizarStatus('✅ OK', '#4CAF50');
-            } else {
-                document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
-                document.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter' }));
-                atualizarStatus('⚠️ Enter', '#ff9800');
-            }
-
-            linhaAlvo.style.backgroundColor = '#a5d6a7';
-            linhaAlvo.style.border = '2px solid green';
-
-            await delay(DELAYS.APOS_CONFIRMAR);
-            return true;
-        }
-
-        // ===== LOOP PRINCIPAL =====
-        async function executarLoop() {
-            if (executando) return;
-
-            const inputLoop = document.getElementById('input-loop');
-            totalDesejado = parseInt(inputLoop.value) || 1;
-            contador = 0;
-            executando = true;
-            pausado = false;
-            parar = false;
-
-            btnPlay.innerText = '⏳ RODANDO';
-            btnPlay.style.backgroundColor = '#ff9800';
-            btnPlay.disabled = true;
-            btnPause.disabled = false;
-            btnPause.style.opacity = '1';
-            btnPause.innerText = '⏸ PAUSE';
-            btnStop.disabled = false;
-            btnStop.style.opacity = '1';
-
-            document.getElementById('contador-feitos').innerText = '0';
-            atualizarStatus(`▶️ Iniciando ${totalDesejado}...`, '#ff9800');
-
-            for (let i = 0; i < totalDesejado; i++) {
-                if (parar) {
-                    atualizarStatus('⏹️ Parado', '#f44336');
-                    break;
-                }
-
-                while (pausado) {
-                    atualizarStatus('⏸️ PAUSADO', '#f44336');
-                    await delay(1000);
-                    if (parar) break;
-                }
-                if (parar) break;
-
-                const sucesso = await executarApropriacao();
-                if (sucesso) {
-                    contador++;
-                    document.getElementById('contador-feitos').innerText = contador;
-                    atualizarStatus(`✅ ${contador}/${totalDesejado}`, '#4CAF50');
-                } else {
-                    atualizarStatus('❌ Falha', '#f44336');
-                    break;
-                }
-
-                if (i < totalDesejado - 1) {
-                    await delay(DELAY_ENTRE_LOOPS);
-                }
-            }
-
-            executando = false;
-            pausado = false;
-            btnPlay.innerText = '▶ PLAY';
-            btnPlay.style.backgroundColor = '#4CAF50';
-            btnPlay.disabled = false;
-            btnPause.disabled = true;
-            btnPause.style.opacity = '0.5';
-            btnPause.innerText = '⏸ PAUSE';
-            btnStop.disabled = true;
-            btnStop.style.opacity = '0.5';
-
-            if (!parar) {
-                atualizarStatus(`🏁 ${contador} concluídos!`, '#4CAF50');
-            }
-        }
-
-        // ===== EVENTOS DOS BOTÕES =====
-        btnPlay.addEventListener('click', () => {
-            if (!executando) {
-                executarLoop();
-            }
+            btn.onclick = fn;
+            btn.onmouseover = () => {
+                if (!btn.disabled) btn.style.filter = 'brightness(0.9)';
+            };
+            btn.onmouseout = () => {
+                if (!btn.disabled) btn.style.filter = 'brightness(1)';
+            };
+            botoes.appendChild(btn);
         });
 
-        btnPause.addEventListener('click', () => {
-            if (executando && !pausado) {
-                pausado = true;
-                btnPause.innerText = '▶ RETOMAR';
-                atualizarStatus('⏸️ PAUSADO', '#f44336');
-            } else if (executando && pausado) {
-                pausado = false;
-                btnPause.innerText = '⏸ PAUSE';
-                atualizarStatus('▶️ Retomando...', '#ff9800');
-            }
-        });
+        painel.appendChild(botoes);
 
-        btnStop.addEventListener('click', () => {
-            if (executando) {
-                parar = true;
-                pausado = false;
-                atualizarStatus('⏹️ Parando...', '#f44336');
-                btnPause.innerText = '⏸ PAUSE';
-            }
-        });
-
-        inputLoop.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                btnPlay.click();
-            }
-        });
-
-        // ===== LÓGICA DE ARRASTAR =====
+        // Arrastar
         let arrastando = false;
         let cliqueX = 0, cliqueY = 0;
 
         painel.addEventListener('mousedown', (e) => {
-            if (e.target === btnPlay || e.target === btnPause || e.target === btnStop) return;
-            if (e.target.tagName === 'INPUT') return;
+            if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT') return;
             arrastando = true;
             cliqueX = e.clientX - painel.offsetLeft;
             cliqueY = e.clientY - painel.offsetTop;
@@ -432,21 +391,42 @@
             painel.style.bottom = 'auto';
         });
 
-        document.addEventListener('mouseup', () => {
-            arrastando = false;
-        });
+        document.addEventListener('mouseup', () => { arrastando = false; });
 
-        painel.appendChild(botoesDiv);
         document.body.appendChild(painel);
-        console.log('✅ Painel Super Rápido criado!');
-        console.log(`⏱️ Delays: ${DELAYS.APOS_SELECIONAR/1000}s / ${DELAYS.APOS_CLICAR/1000}s / ${DELAYS.APOS_CONFIRMAR/1000}s`);
-        console.log(`⏱️ Entre loops: ${DELAY_ENTRE_LOOPS/1000}s`);
-        console.log('📌 Configure a quantidade e clique em PLAY');
+        log('✅ Painel criado');
     }
 
-    // ===== INICIALIZA =====
-    iniciarPainel();
-    const observador = new MutationObserver(() => iniciarPainel());
-    observador.observe(document.documentElement, { childList: true, subtree: true });
+    // ============ INICIAR ============
+    function iniciar() {
+        let tentativas = 0;
+        const interval = setInterval(() => {
+            tentativas++;
+            const tabela = document.getElementById('assignmentTasks') || document.querySelector('td');
+            if (tabela && !getEl('meu-painel-automacao')) {
+                criarPainel();
+                clearInterval(interval);
+            }
+            if (tentativas >= CFG.MAX_TENTATIVAS) {
+                clearInterval(interval);
+                log('⚠️ Tempo esgotado');
+            }
+        }, CFG.INTERVALO);
+    }
+
+    // ============ EXECUTAR ============
+    if (location.href.includes('legacy/operations') || location.href.includes('ui/')) {
+        setTimeout(iniciar, 1500);
+
+        const observer = new MutationObserver(() => {
+            if (!getEl('meu-painel-automacao')) {
+                const tabela = document.getElementById('assignmentTasks') || document.querySelector('td');
+                if (tabela) criarPainel();
+            }
+        });
+        observer.observe(document.documentElement, { childList: true, subtree: true });
+
+        log('✅ Script Aproprias Rústico iniciado');
+    }
 
 })();
