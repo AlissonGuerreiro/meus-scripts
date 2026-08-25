@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Osir - Assistente de Chamado
+// @name         Osir - Assistente de Chamado (Rústico)
 // @namespace    http://tampermonkey.net/
-// @version      1.3.9
+// @version      2.0.0
 // @description  Alertas automáticos de planos, auditor de estoque e esconder botão
 // @author       Alisson Guerreiro
 // @match        https://erp.osirnet.com.br/*
@@ -12,13 +12,17 @@
 (function() {
     'use strict';
 
-    const SCRIPT_VERSION = '1.3.9';
-    console.log(`🚀 Osir Assistente de Chamado v${SCRIPT_VERSION} carregado!`);
+    // ============ CONFIG ============
+    const CFG = {
+        VERSAO: '2.0.0',
+        AUDITOR_INTERVAL: 2000,
+        DEBOUNCE_DELAY: 400,
+        MAX_CABO_DROP: 350,
+        DEBUG: true
+    };
 
-    // =========================================================================
-    // BANCO DE DADOS (MATERIAIS E FERRAMENTAS)
-    // =========================================================================
-    const MATERIAIS_PERMITIDOS = [
+    // ============ BANCO DE DADOS ============
+    const MATERIAIS = [
         "CONECTOR FAST SC/APC", "FIXA FIO PRETO UNIDADE", "SUPORTE ORGANIZADOR DE ROTEADOR",
         "SUPORTE ORGANIZADOR DE ROTEADOR - OSIRNET", "BUCHA DE PAREDE 6MM", "PARAFUSO PHILIPS 6MM",
         "CABO ÓPTICO (DROP)", "FECHO DENTADO INOX 3/4", "ALCA PRE FORMADA PARA DROP - FIO FE 80/100/160 420MM BIT 1,85MM",
@@ -28,11 +32,12 @@
         "FITA ISOLANTE PRETA 20M X 19 MM", "BUCHA DE PAREDE 8MM", "PARAFUSO PHILIPS 4,0 X 40",
         "CABO LAN BRANCO", "ALINHADOR OPTICO APC SIMPLEX", "PROTETOR DE EMENDA", "SUPA 3",
         "FITA DE ACO INOX 430 LAMINADO A FRIO LISA 3/4 - 05 MM X 25MTS", "PF CHIP RT CB CH PH BC 3,5X25MM",
-        "BUCHA FIXACAO 6MM", "PARAFUSO 10 x 55 mm", "ARAME DE ESPINAR ISOLADO METALICO FEI125V 105M", "FITA ISOLANTE PRETA 19MM X 10M", "BUCHA DE PAREDE 10mm", "ABRACADEIRA DE FIXACAO 28CM X 4,80MM - PRETA",
-        "FIXA FIO BRANCO UNIDADE"
+        "BUCHA FIXACAO 6MM", "PARAFUSO 10 x 55 mm", "ARAME DE ESPINAR ISOLADO METALICO FEI125V 105M",
+        "FITA ISOLANTE PRETA 19MM X 10M", "BUCHA DE PAREDE 10mm", "ABRACADEIRA DE FIXACAO 28CM X 4,80MM - PRETA",
+        "FIXA FIO BRANCO UNIDADE", "SUPORTE EMENDA 3/4", "SUPORTE DE ANTENA - MODELO CAVALETE PARA PAREDE 3/4"
     ];
 
-    const FERRAMENTAS_PROIBIDAS = [
+    const FERRAMENTAS = [
         "ALICATE DE CORTE DIAGONAL ISOLADO", "ALICATE DE CRIMPAR", "ALICATE DECAPADOR DE CABO DROP FLAT CABLE STRIPPER VERDE",
         "ALICATE DECAPADOR DE FIBRA OPTICA 3 FUROS AMARELO CFS-3", "ALICATE UNIVERSAL",
         "BADISCO DIGITAL C/ IDENTIFICADOR DE CHAMADAS", "PILHA AAA RECARREGÁVEL", "BOLSA PARA FERRAMENTAS 12\" STANDARD",
@@ -49,471 +54,389 @@
         "RECIPIENTE P/ ÁLCOOL ISOPROPÍLICO 200ML", "CHAVE COMBINADA C/ CATRACA 10MM",
         "CHAVE COMBINADA C/ CATRACA 13MM", "CORDA ELASTICA 1,5M", "MARTELETE 820W 220V GBH 2-24 BOSCH",
         "TESTADOR DE REDE RJ 45 E RJ 11", "BATERIA 9V ALCALINA", "CANETA P/ RETROPROJETOR PRETA",
-        "CADEADO ANTIFURTO COM CHAVE 1,2 MT", "CLIVADOR REDEX", "CAIXA ORGANIZADORA", "GARRAFA TERMICA 5L"
+        "CADEADO ANTIFURTO COM CHAVE 1,2 MT", "CLIVADOR REDEX", "CAIXA ORGANIZADORA", "GARRAFA TERMICA 5L",
+        "FILTRO DE LINHA REGUA 4 TOMADAS - 10A - PRETO"
     ];
 
-    // =========================================================================
-    // FUNÇÕES AUXILIARES
-    // =========================================================================
+    // ============ UTILITÁRIOS ============
+    function log(...args) {
+        if (CFG.DEBUG) console.log('[Chamado]', ...args);
+    }
+
     function normalizarItem(texto) {
-        if (!texto) return "";
-        return texto.trim().replace(/^\d+\s*-\s*/, "")
-                    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-                    .replace(/\s+/g, " ").toUpperCase();
+        if (!texto) return '';
+        return texto.trim().replace(/^\d+\s*-\s*/, '')
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+            .replace(/\s+/g, ' ').toUpperCase();
     }
 
-    const listaPermitidaNormalizada = MATERIAIS_PERMITIDOS.map(normalizarItem);
-    const listaFerramentasNormalizada = FERRAMENTAS_PROIBIDAS.map(normalizarItem);
-    const CABO_DROP_NORMALIZADO = normalizarItem("CABO ÓPTICO (DROP)");
-
-    // NÃO REMOVER CARACTERES ESPECIAIS DOS NOMES DOS SERVIÇOS
     function normalizarTexto(texto) {
-        if (!texto) return "";
-        // Remove apenas acentos, mas mantém hífens e espaços para detectar "Osir Fone" e "Wi-Fi"
-        return texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-                    .replace(/\s+/g, " ")  // Normaliza espaços
-                    .toLowerCase().trim();
+        if (!texto) return '';
+        return texto.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+            .replace(/\s+/g, ' ').toLowerCase().trim();
     }
 
-    // =========================================================================
-    // CONTAINERS DE ALERTAS
-    // =========================================================================
-    const alertContainer = document.createElement('div');
-    alertContainer.id = 'tm-alerts-container';
-    alertContainer.style.cssText = "position: fixed; bottom: 140px; right: 25px; width: 340px; z-index: 10000; font-family: 'Roboto', sans-serif, Arial; display: flex; flex-direction: column-reverse; gap: 10px; pointer-events: none;";
-    document.body.appendChild(alertContainer);
+    function debounce(fn, delay = 300) {
+        let timer;
+        return function(...args) {
+            clearTimeout(timer);
+            timer = setTimeout(() => fn.apply(this, args), delay);
+        };
+    }
 
-    const auditorContainer = document.createElement('div');
-    auditorContainer.id = 'tm-auditor-container';
-    auditorContainer.style.cssText = "position: fixed; top: 80px; right: 25px; width: 360px; z-index: 10001; font-family: 'Roboto', sans-serif, Arial; display: flex; flex-direction: column; gap: 10px; pointer-events: none;";
-    document.body.appendChild(auditorContainer);
+    const MATERIAIS_NORM = MATERIAIS.map(normalizarItem);
+    const FERRAMENTAS_NORM = FERRAMENTAS.map(normalizarItem);
+    const CABO_DROP = normalizarItem('CABO ÓPTICO (DROP)');
 
-    // =========================================================================
-    // FUNÇÕES DE CRIAÇÃO DE CARDS
-    // =========================================================================
-    function criarCardAlerta(texto, corFundo, corTexto, corBorda, icone = "") {
+    // ============ CONTAINERS ============
+    const containers = {};
+
+    function criarContainers() {
+        const alertC = document.createElement('div');
+        alertC.id = 'tm-alerts-container';
+        alertC.style.cssText = `
+            position:fixed;bottom:140px;right:25px;width:340px;z-index:10000;
+            font-family:Roboto,sans-serif;display:flex;flex-direction:column-reverse;
+            gap:10px;pointer-events:none;
+        `;
+        document.body.appendChild(alertC);
+        containers.alertas = alertC;
+
+        const auditC = document.createElement('div');
+        auditC.id = 'tm-auditor-container';
+        auditC.style.cssText = `
+            position:fixed;top:80px;right:25px;width:360px;z-index:10001;
+            font-family:Roboto,sans-serif;display:flex;flex-direction:column;
+            gap:10px;pointer-events:none;
+        `;
+        document.body.appendChild(auditC);
+        containers.auditor = auditC;
+
+        log('✅ Containers criados');
+    }
+
+    // ============ CARDS ============
+    function criarCard(corFundo, corTexto, corBorda) {
         const card = document.createElement('div');
-        card.style.cssText = `background-color: ${corFundo}; color: ${corTexto}; border: 2px solid ${corBorda}; border-radius: 8px; padding: 12px 15px; font-size: 12px; font-weight: bold; line-height: 1.4; box-shadow: 0px 4px 12px rgba(0,0,0,0.15); text-align: center; text-transform: uppercase; pointer-events: auto;`;
-        card.innerText = icone + " " + texto;
+        card.style.cssText = `
+            background:${corFundo};color:${corTexto};border:2px solid ${corBorda};
+            border-radius:8px;padding:12px 15px;font-size:12px;font-weight:700;
+            line-height:1.4;box-shadow:0 4px 12px rgba(0,0,0,0.15);
+            text-align:center;pointer-events:auto;position:relative;
+        `;
+
+        const btnFechar = document.createElement('span');
+        btnFechar.textContent = '✕';
+        btnFechar.style.cssText = `
+            position:absolute;top:6px;right:8px;cursor:pointer;
+            font-size:14px;opacity:0.6;padding:2px 4px;
+        `;
+        btnFechar.onmouseenter = () => btnFechar.style.opacity = '1';
+        btnFechar.onmouseleave = () => btnFechar.style.opacity = '0.6';
+        btnFechar.onclick = () => card.remove();
+        card.appendChild(btnFechar);
         return card;
     }
 
-    function criarCardErroEstoque(itemIncorreto, motivo = "NÃO ALOCAR COMO CONSUMO INTERNO!") {
-        const card = document.createElement('div');
-        card.style.cssText = "background-color: #ffebee; color: #c62828; border: 2px solid #d32f2f; border-radius: 8px; padding: 14px; font-size: 12px; font-weight: bold; line-height: 1.5; box-shadow: 0px 4px 12px rgba(0,0,0,0.2); text-align: center; pointer-events: auto;";
-        card.innerHTML = `⚠️ ATENÇÃO: ITEM FORA DO PADRÃO DETECTADO!<br><span style="color:#000; font-size:13px;">"${itemIncorreto}"</span><br>${motivo}`;
+    function cardAlerta(texto, corFundo, corTexto, corBorda, icone = '') {
+        const card = criarCard(corFundo, corTexto, corBorda);
+        card.style.textTransform = 'uppercase';
+        const div = document.createElement('div');
+        div.style.paddingRight = '18px';
+        div.textContent = `${icone} ${texto}`;
+        card.appendChild(div);
         return card;
     }
 
-    function criarCardErroQuantidade(item, qtd) {
-        const card = document.createElement('div');
-        card.style.cssText = "background-color: #fffde7; color: #f57f17; border: 2px solid #fbc02d; border-radius: 8px; padding: 14px; font-size: 12px; font-weight: bold; line-height: 1.5; box-shadow: 0px 4px 12px rgba(0,0,0,0.2); text-align: center; pointer-events: auto;";
-        card.innerHTML = `⚠️ LIMITE EXCEDIDO!<br><span style="color:#000; font-size:13px;">"${item}"</span><br>Quantidade alocada: <span style="font-size:14px; color:#e65100;">${qtd} MTS</span><br>O limite do teste é 350 MTS!`;
+    function cardErroItem(item, motivo = 'NÃO ALOCAR COMO CONSUMO INTERNO!') {
+        const card = criarCard('#ffebee', '#c62828', '#d32f2f');
+        const div = document.createElement('div');
+        div.style.paddingRight = '18px';
+        div.innerHTML = `
+            ⚠️ ATENÇÃO: ITEM FORA DO PADRÃO DETECTADO!<br>
+            <span style="color:#000;font-size:13px;">"${item}"</span><br>
+            ${motivo}
+        `;
+        card.appendChild(div);
         return card;
     }
 
-    // =========================================================================
-    // FUNÇÃO PARA ESCONDER O BOTÃO INFERNAL (NOVO!)
-    // =========================================================================
-    function esconderBotaoProtocolo() {
-        try {
-            const botoes = document.querySelectorAll('button.MuiButtonBase-root.MuiButton-root');
-            let encontrado = false;
+    function cardErroQtd(item, qtd) {
+        const card = criarCard('#fffde7', '#f57f17', '#fbc02d');
+        const div = document.createElement('div');
+        div.style.paddingRight = '18px';
+        div.innerHTML = `
+            ⚠️ LIMITE EXCEDIDO!<br>
+            <span style="color:#000;font-size:13px;">"${item}"</span><br>
+            Quantidade: <span style="font-size:14px;color:#e65100;">${qtd} MTS</span><br>
+            Limite: ${CFG.MAX_CABO_DROP} MTS!
+        `;
+        card.appendChild(div);
+        return card;
+    }
 
-            botoes.forEach(botao => {
-                if (botao.textContent && botao.textContent.trim() === 'Abrir novo protocolo para o mesmo cliente') {
-                    botao.style.display = 'none';
-                    encontrado = true;
-                    if (!window._botaoEscondido) {
-                        console.log('✅ Botão "Abrir novo protocolo para o mesmo cliente" escondido!');
-                        window._botaoEscondido = true;
-                    }
+    // ============ ESCONDER BOTÃO ============
+    function esconderBotao() {
+        const botoes = document.querySelectorAll('button.MuiButtonBase-root.MuiButton-root');
+        let encontrado = false;
+        botoes.forEach(btn => {
+            if (btn.textContent?.trim() === 'Abrir novo protocolo para o mesmo cliente') {
+                btn.style.display = 'none';
+                encontrado = true;
+                if (!window._botaoEscondido) {
+                    log('✅ Botão escondido');
+                    window._botaoEscondido = true;
                 }
-            });
-
-            if (!encontrado && !window._botaoEscondido) {
-                // Tenta novamente com mais tempo
-                setTimeout(esconderBotaoProtocolo, 2000);
             }
-        } catch (err) {
-            // Ignora erros para não quebrar o resto
+        });
+        if (!encontrado && !window._botaoEscondido) {
+            setTimeout(esconderBotao, 2000);
         }
     }
 
-    // =========================================================================
-    // FUNÇÃO PARA DETECTAR SERVIÇOS (TODAS AS VARIAÇÕES) - VERSÃO MELHORADA
-    // =========================================================================
+    // ============ DETECTAR SERVIÇO ============
     function detectarServico(texto, servico) {
-        const txtLower = texto.toLowerCase();
-
-        switch(servico) {
-            case 'wifiPro': {
-                // Todas as variações possíveis de WiFi Pro
-                const wifiProPatterns = [
-                    /wifi\s*pro/,
-                    /wi-fi\s*pro/,
-                    /wi\s*fi\s*pro/,
-                    /wifipro/,
-                    /wifi\s*profissional/,
-                    /wi-fi\s*profissional/,
-                    /wi\s*fi\s*profissional/,
-                    /wifi\s*pro/,
-                    /wi-fi\s*pro/
-                ];
-                return wifiProPatterns.some(pattern => pattern.test(txtLower));
-            }
-            case 'wifiEnterprise': {
-                // Todas as variações possíveis de WiFi Enterprise
-                const wifiEnterprisePatterns = [
-                    /wifi\s*enterprise/,
-                    /wi-fi\s*enterprise/,
-                    /wi\s*fi\s*enterprise/,
-                    /wifi\s+empresarial/,
-                    /wi-fi\s+empresarial/,
-                    /enterprise\s+wifi/,
-                    /empresarial\s+wifi/
-                ];
-                return wifiEnterprisePatterns.some(pattern => pattern.test(txtLower));
-            }
-            case 'osirFone': {
-                // Todas as variações possíveis de OsirFone
-                const osirFonePatterns = [
-                    /osir\s*fone/,
-                    /osirfone/,
-                    /osir\s+telefone/,
-                    /telefonia\s+osir/,
-                    /osir\s+fixa/,
-                    /osir\s+telefonia/,
-                    /osir\s+fone\s+ilimitado/,
-                    /fone\s+osir/
-                ];
-                return osirFonePatterns.some(pattern => pattern.test(txtLower));
-            }
-            case 'osirMovel': {
-                // Todas as variações possíveis de OsirMóvel
-                const osirMovelPatterns = [
-                    /osir\s*m[oó]vel/,
-                    /osirm[oó]vel/,
-                    /osir\s+movel/,
-                    /chip\s+osir/,
-                    /osir\s+chip/,
-                    /osir\s+celular/,
-                    /osir\s+mobile/
-                ];
-                return osirMovelPatterns.some(pattern => pattern.test(txtLower));
-            }
-            default:
-                return false;
-        }
+        const t = texto.toLowerCase();
+        const patterns = {
+            wifiPro: [/wifi\s*pro/, /wi-fi\s*pro/, /wi\s*fi\s*pro/, /wifipro/, /wifi\s*profissional/],
+            wifiEnterprise: [/wifi\s*enterprise/, /wi-fi\s*enterprise/, /wi\s*fi\s*enterprise/, /wifi\s+empresarial/],
+            osirFone: [/osir\s*fone/, /osirfone/, /osir\s+telefone/, /telefonia\s+osir/, /osir\s+fixa/],
+            osirMovel: [/osir\s*m[oó]vel/, /osirm[oó]vel/, /chip\s+osir/, /osir\s+chip/, /osir\s+celular/]
+        };
+        return (patterns[servico] || []).some(p => p.test(t));
     }
 
-    // =========================================================================
-    // FUNÇÃO PARA OBTER O TEXTO DA DEMANDA DO CLIENTE
-    // =========================================================================
+    // ============ OBTER TEXTO DA OS ============
     function obterTextoOS() {
         try {
-            console.log('🔍 Buscando TODO o texto da Demanda do Cliente...');
-
-            // Estratégia 1: Encontrar pelo título
-            const todosElementos = document.querySelectorAll('p, div, span');
+            const elementos = document.querySelectorAll('p, div, span');
             let tituloDemanda = null;
 
-            for (let el of todosElementos) {
-                const texto = el.innerText ? el.innerText.trim() : '';
-                if (texto === 'Demanda do Cliente' && el.tagName === 'P') {
+            for (const el of elementos) {
+                if (el.innerText?.trim() === 'Demanda do Cliente' && el.tagName === 'P') {
                     tituloDemanda = el;
-                    console.log('✅ Título "Demanda do Cliente" encontrado');
                     break;
                 }
             }
 
             if (tituloDemanda) {
-                let container = tituloDemanda.closest('.MuiBox-root') || tituloDemanda.parentElement;
-
+                const container = tituloDemanda.closest('.MuiBox-root') || tituloDemanda.parentElement;
                 if (container) {
-                    let textoCompleto = container.innerText || container.textContent || '';
-                    textoCompleto = textoCompleto.replace(/^Demanda do Cliente\s*/, '');
-
-                    const indexRelato = textoCompleto.indexOf('Relato de Atendimento');
-                    if (indexRelato !== -1) {
-                        textoCompleto = textoCompleto.substring(0, indexRelato);
-                    }
-
-                    textoCompleto = textoCompleto.replace(/Expandir/g, '').replace(/expandir/g, '');
-
-                    if (textoCompleto && textoCompleto.length > 50) {
-                        console.log('✅ Texto completo obtido do container!');
-                        return textoCompleto.trim();
-                    }
+                    let texto = container.innerText || container.textContent || '';
+                    texto = texto.replace(/^Demanda do Cliente\s*/, '');
+                    const idx = texto.indexOf('Relato de Atendimento');
+                    if (idx !== -1) texto = texto.substring(0, idx);
+                    texto = texto.replace(/Expandir/gi, '');
+                    if (texto?.length > 50) return texto.trim();
                 }
             }
 
-            // Estratégia 2: Buscar diretamente pelo conteúdo
-            const todosDivs = document.querySelectorAll('div');
-            let melhorTexto = '';
+            let melhor = '';
             let melhorScore = 0;
-
-            for (let div of todosDivs) {
+            for (const div of document.querySelectorAll('div')) {
                 const texto = div.innerText || div.textContent || '';
-
-                if (texto.includes('-- Venda pelo vendedor') ||
-                    texto.includes('Adesão: R$') ||
-                    texto.includes('Forma de pagamento:')) {
-
-                    if (!texto.includes('Instalação efetuada com sucesso') ||
-                        !texto.includes('CTO:')) {
-
-                        let textoLimpo = texto;
-                        const indexRelato = textoLimpo.indexOf('Relato de Atendimento');
-                        if (indexRelato !== -1) {
-                            textoLimpo = textoLimpo.substring(0, indexRelato);
-                        }
-
-                        textoLimpo = textoLimpo.replace(/Expandir/g, '').replace(/expandir/g, '');
+                if (texto.includes('-- Venda pelo vendedor') || texto.includes('Adesão: R$') || texto.includes('Forma de pagamento:')) {
+                    if (!texto.includes('Instalação efetuada com sucesso') || !texto.includes('CTO:')) {
+                        let limpo = texto;
+                        const idx = limpo.indexOf('Relato de Atendimento');
+                        if (idx !== -1) limpo = limpo.substring(0, idx);
+                        limpo = limpo.replace(/Expandir/gi, '');
 
                         let score = 0;
-                        if (textoLimpo.includes('Planos')) score += 3;
-                        if (textoLimpo.includes('Endereço')) score += 3;
-                        if (textoLimpo.includes('Serviços a serem ativados')) score += 3;
-                        if (textoLimpo.includes('WI-FI PRO')) score += 2;
-                        if (textoLimpo.includes('Wi-fi Pro')) score += 2;
-                        if (textoLimpo.includes('Osir Fone')) score += 3;
-                        if (textoLimpo.includes('OsirFone')) score += 3;
+                        if (limpo.includes('Planos')) score += 3;
+                        if (limpo.includes('Endereço')) score += 3;
+                        if (limpo.includes('Serviços a serem ativados')) score += 3;
+                        if (limpo.includes('WI-FI PRO') || limpo.includes('Wi-fi Pro')) score += 2;
+                        if (limpo.includes('Osir Fone') || limpo.includes('OsirFone')) score += 3;
 
-                        if (score > melhorScore && textoLimpo.length > 100) {
+                        if (score > melhorScore && limpo.length > 100) {
                             melhorScore = score;
-                            melhorTexto = textoLimpo;
+                            melhor = limpo;
                         }
                     }
                 }
             }
-
-            if (melhorTexto && melhorTexto.length > 100) {
-                console.log('✅ Texto completo encontrado!');
-                return melhorTexto.trim();
-            }
-
-            console.log('⚠️ Nenhum texto válido encontrado');
-            return '';
-
-        } catch (err) {
-            console.error('Erro ao buscar texto:', err);
+            return melhor?.length > 100 ? melhor.trim() : '';
+        } catch (e) {
             return '';
         }
     }
 
-    // =========================================================================
-    // MÓDULO 1: NOTIFICADOR DE PLANOS
-    // =========================================================================
+    // ============ PROCESSAR ALERTAS ============
     let ultimaCategoria = null;
-    let ultimoTextoOS = "";
+    let ultimoTexto = '';
 
     function processarAlertas() {
         try {
-            const inputCategoria = document.getElementById('serviceCategoryId1');
-            if (!inputCategoria) {
-                alertContainer.innerHTML = "";
-                ultimaCategoria = null;
-                return;
-            }
+            const input = document.getElementById('serviceCategoryId1');
+            if (!input) { containers.alertas.innerHTML = ''; ultimaCategoria = null; return; }
 
-            const categoryAtual = inputCategoria.value ? inputCategoria.value.trim() : "";
-            let textoOSOriginal = obterTextoOS();
+            const categoria = input.value?.trim() || '';
+            let texto = obterTextoOS();
 
-            if (!textoOSOriginal || textoOSOriginal.length < 10) {
-                alertContainer.innerHTML = "";
-                return;
-            }
+            if (!texto || texto.length < 10) { containers.alertas.innerHTML = ''; return; }
+            if (categoria === ultimaCategoria && texto === ultimoTexto) return;
 
-            if (categoryAtual === ultimaCategoria && textoOSOriginal === ultimoTextoOS) return;
-            ultimaCategoria = categoryAtual;
-            ultimoTextoOS = textoOSOriginal;
-            alertContainer.innerHTML = "";
+            ultimaCategoria = categoria;
+            ultimoTexto = texto;
+            containers.alertas.innerHTML = '';
 
-            // Mantém uma versão limpa para debug
-            let txtNorm = normalizarTexto(textoOSOriginal);
-            txtNorm = txtNorm.replace(/https?:\/\/\S+/gi, "").replace(/\S+@\S+\.\S+/gi, "");
+            let txt = normalizarTexto(texto).replace(/https?:\/\/\S+/gi, '').replace(/\S+@\S+\.\S+/gi, '');
 
-            console.log('📝 Processando alertas...');
-            console.log('📝 Texto normalizado:', txtNorm.substring(0, 500) + '...');
-
-            // =============================================================
-            // TROCA DE ENDEREÇO
-            // =============================================================
-            if (categoryAtual.toLowerCase().includes("troca") && categoryAtual.toLowerCase().includes("ender")) {
-                const temCusto80 = /custo[\s\S]*?80\s*00/.test(txtNorm);
-                const temSimMarcado = /\([\s]*x[\s]*\)\s*sim|sim\s*\([\s]*x[\s]*\)|sim\s*\(x\)|\(x\)\s*sim/.test(txtNorm);
-
-                if (temCusto80 && temSimMarcado) {
-                    alertContainer.appendChild(criarCardAlerta(
-                        "ENVIAR PARA SAC N2 FAZER A COBRANÇA DE R$ 80,00!",
-                        "#ffebee", "#c62828", "#d32f2f", "⚠️"
+            // Troca de Endereço
+            if (categoria.toLowerCase().includes('troca') && categoria.toLowerCase().includes('ender')) {
+                if (/custo[\s\S]*?80\s*00/.test(txt) && /\([\s]*x[\s]*\)\s*sim|sim\s*\([\s]*x[\s]*\)/.test(txt)) {
+                    containers.alertas.appendChild(cardAlerta(
+                        'ENVIAR PARA SAC N2 FAZER A COBRANÇA DE R$ 80,00!',
+                        '#ffebee', '#c62828', '#d32f2f', '⚠️'
                     ));
                 }
                 return;
             }
 
-            // =============================================================
-            // VERIFICAÇÕES DE SERVIÇOS (USANDO A FUNÇÃO DETECTAR)
-            // =============================================================
+            // Serviços
+            const servicos = [
+                { id: 'wifiPro', label: 'WIFI-PRO: VERIFICAR SE FOI INSTALADO!', cor: '#f3e5f5', texto: '#4a148c', borda: '#9c27b0', icone: '🌐' },
+                { id: 'wifiEnterprise', label: 'WIFI ENTERPRISE: VERIFICAR. EQUIP: ONU > RB > EAPs', cor: '#e8f5e9', texto: '#1b5e20', borda: '#43a047', icone: '🏢' },
+                { id: 'osirFone', label: 'TELEFONIA FIXA: VERIFICAR SE FOI INSTALADA!', cor: '#e3f2fd', texto: '#0d47a1', borda: '#1976d2', icone: '📞' },
+                { id: 'osirMovel', label: 'OSIRMÓVEL: VERIFICAR SE O CHIP FOI ENTREGUE!', cor: '#fff3e0', texto: '#e65100', borda: '#ff9800', icone: '📱' }
+            ];
 
-            // ✅ WiFi Pro - 🌐
-            if (detectarServico(txtNorm, 'wifiPro')) {
-                console.log('✅ WiFi Pro detectado!');
-                alertContainer.appendChild(criarCardAlerta(
-                    "WIFI-PRO: VERIFICAR SE FOI INSTALADO!",
-                    "#f3e5f5", "#4a148c", "#9c27b0", "🌐"
-                ));
-            }
-
-            // ✅ WiFi Enterprise - 🏢
-            if (detectarServico(txtNorm, 'wifiEnterprise')) {
-                console.log('✅ WiFi Enterprise detectado!');
-                alertContainer.appendChild(criarCardAlerta(
-                    "WIFI ENTERPRISE: VERIFICAR SE FOI INSTALADO. EQUIPAMENTOS NECESSÁRIOS: ONU > RB > EAPs",
-                    "#e8f5e9", "#1b5e20", "#43a047", "🏢"
-                ));
-            }
-
-            // ✅ OsirFone - 📞
-            if (detectarServico(txtNorm, 'osirFone')) {
-                console.log('✅ OsirFone detectado!');
-                alertContainer.appendChild(criarCardAlerta(
-                    "TELEFONIA FIXA: VERIFICAR SE FOI INSTALADA! COM OS EQUIPAMENTOS ADEQUADOS.",
-                    "#e3f2fd", "#0d47a1", "#1976d2", "📞"
-                ));
-            }
-
-            // ✅ OsirMóvel - 📱
-            if (detectarServico(txtNorm, 'osirMovel')) {
-                console.log('✅ OsirMóvel detectado!');
-                alertContainer.appendChild(criarCardAlerta(
-                    "OSIRMÓVEL: VERIFICAR SE O CHIP FOI ENTREGUE!",
-                    "#fff3e0", "#e65100", "#ff9800", "📱"
-                ));
-            }
-
-        } catch (err) {
-            console.error("Erro Notificador:", err);
+            servicos.forEach(s => {
+                if (detectarServico(txt, s.id)) {
+                    containers.alertas.appendChild(cardAlerta(s.label, s.cor, s.texto, s.borda, s.icone));
+                    log(`✅ ${s.id} detectado!`);
+                }
+            });
+        } catch (e) {
+            console.error('Erro Notificador:', e);
         }
     }
 
-    // =========================================================================
-    // MÓDULO 2: AUDITOR DE ESTOQUE
-    // =========================================================================
-    function abaConsumoEstaAtiva(doc) {
-        const spansAba = doc.querySelectorAll('.MuiTab-wrapper');
-        for (let span of spansAba) {
-            if (span.innerText && span.innerText.toUpperCase().includes("PRODUTOS - CONSUMO INTERNO")) {
-                const b = span.closest('button');
-                if (b && b.classList.contains('Mui-selected')) return true;
+    const processarDebounced = debounce(processarAlertas, CFG.DEBOUNCE_DELAY);
+
+    // ============ AUDITOR DE ESTOQUE ============
+    let auditando = false;
+
+    function abaConsumoAtiva(doc) {
+        const spans = doc.querySelectorAll('.MuiTab-wrapper');
+        for (const span of spans) {
+            if (span.innerText?.toUpperCase().includes('PRODUTOS - CONSUMO INTERNO')) {
+                const btn = span.closest('button');
+                if (btn?.classList.contains('Mui-selected')) return true;
             }
         }
         return false;
     }
 
-    function analisarGridMateriais(doc) {
-        let errosItens = [];
-        let errosQtd = [];
+    function analisarGrid(doc) {
+        const errosItens = [];
+        const errosQtd = [];
 
-        if (!abaConsumoEstaAtiva(doc)) return { errosItens, errosQtd };
+        if (!abaConsumoAtiva(doc)) return { errosItens, errosQtd };
 
-        const linhasGrid = doc.querySelectorAll('tr.line, [role="row"], .rt-tr, [id*="datagrid_row" i]');
-        linhasGrid.forEach(linha => {
+        const linhas = doc.querySelectorAll('tr.line, [role="row"], .rt-tr, [id*="datagrid_row" i]');
+        linhas.forEach(linha => {
             const celulas = linha.querySelectorAll('td, [role="gridcell"], .rt-td, div[class*="cell" i]');
             if (celulas.length >= 3) {
-                const txtProd = celulas[1].textContent.trim();
-                if (txtProd && isNaN(txtProd) && txtProd.length > 3 && !txtProd.toUpperCase().startsWith("TOTAL")) {
-                    const itemNorm = normalizarItem(txtProd);
-                    let ferramenta = listaFerramentasNormalizada.find(f => itemNorm === f || itemNorm.includes(f));
+                const produto = celulas[1].textContent.trim();
+                if (produto && isNaN(produto) && produto.length > 3 && !produto.toUpperCase().startsWith('TOTAL')) {
+                    const itemNorm = normalizarItem(produto);
 
+                    const ferramenta = FERRAMENTAS_NORM.find(f => itemNorm === f || itemNorm.includes(f));
                     if (ferramenta) {
-                        if (!errosItens.some(e => e.item === txtProd)) {
-                            errosItens.push({ item: txtProd, motivo: "FERRAMENTA DE TÉCNICO! NÃO ALOCAR NO CONSUMO!" });
+                        if (!errosItens.some(e => e.item === produto)) {
+                            errosItens.push({ item: produto, motivo: 'FERRAMENTA DE TÉCNICO! NÃO ALOCAR NO CONSUMO!' });
                         }
-                    } else if (itemNorm && !listaPermitidaNormalizada.includes(itemNorm) && itemNorm !== "PRODUTO") {
-                        if (!errosItens.some(e => e.item === txtProd)) {
-                            errosItens.push({ item: txtProd, motivo: "NÃO ALOCAR COMO CONSUMO INTERNO!" });
+                    } else if (itemNorm && !MATERIAIS_NORM.includes(itemNorm) && itemNorm !== 'PRODUTO') {
+                        if (!errosItens.some(e => e.item === produto)) {
+                            errosItens.push({ item: produto, motivo: 'NÃO ALOCAR COMO CONSUMO INTERNO!' });
                         }
                     }
 
-                    if (itemNorm === CABO_DROP_NORMALIZADO) {
-                        const qVal = parseFloat(celulas[2].textContent.trim().replace(',', '.'));
-                        if (!isNaN(qVal) && qVal > 350) {
-                            errosQtd.push({ item: txtProd, qtd: qVal });
+                    if (itemNorm === CABO_DROP) {
+                        const qtd = parseFloat(celulas[2].textContent.trim().replace(',', '.'));
+                        if (!isNaN(qtd) && qtd > CFG.MAX_CABO_DROP) {
+                            errosQtd.push({ item: produto, qtd });
                         }
                     }
                 }
             }
         });
+
         return { errosItens, errosQtd };
     }
 
-    function rodarAuditoriaGlobal() {
-        try {
-            let todosErrosItens = [];
-            let todosErrosQtd = [];
+    function rodarAuditoria() {
+        if (auditando) return;
+        auditando = true;
 
-            const resPrincipal = analisarGridMateriais(document);
-            todosErrosItens = todosErrosItens.concat(resPrincipal.errosItens);
-            todosErrosQtd = todosErrosQtd.concat(resPrincipal.errosQtd);
+        try {
+            let itens = [];
+            let qtds = [];
+
+            const res = analisarGrid(document);
+            itens = itens.concat(res.errosItens);
+            qtds = qtds.concat(res.errosQtd);
 
             document.querySelectorAll('iframe').forEach(frame => {
                 try {
-                    const docFrame = frame.contentDocument || frame.contentWindow.document;
-                    const resFrame = analisarGridMateriais(docFrame);
-                    todosErrosItens = todosErrosItens.concat(resFrame.errosItens);
-                    todosErrosQtd = todosErrosQtd.concat(resFrame.errosQtd);
-                } catch (e) {}
+                    const doc = frame.contentDocument || frame.contentWindow.document;
+                    const r = analisarGrid(doc);
+                    itens = itens.concat(r.errosItens);
+                    qtds = qtds.concat(r.errosQtd);
+                } catch (e) { /* cross-origin */ }
             });
 
-            auditorContainer.innerHTML = "";
-            todosErrosItens.filter((v, i, a) => a.findIndex(t => t.item === v.item) === i).forEach(e => {
-                auditorContainer.appendChild(criarCardErroEstoque(e.item, e.motivo));
-            });
-            todosErrosQtd.filter((v, i, a) => a.findIndex(t => (t.item === v.item && t.qtd === v.qtd)) === i).forEach(e => {
-                auditorContainer.appendChild(criarCardErroQuantidade(e.item, e.qtd));
-            });
-        } catch (err) {
-            console.error("Erro Auditoria Global:", err);
+            containers.auditor.innerHTML = '';
+
+            itens.filter((v, i, a) => a.findIndex(t => t.item === v.item) === i)
+                .forEach(e => containers.auditor.appendChild(cardErroItem(e.item, e.motivo)));
+
+            qtds.filter((v, i, a) => a.findIndex(t => t.item === v.item && t.qtd === v.qtd) === i)
+                .forEach(e => containers.auditor.appendChild(cardErroQtd(e.item, e.qtd)));
+
+        } catch (e) {
+            console.error('Erro Auditoria:', e);
+        } finally {
+            auditando = false;
         }
     }
 
-    // =========================================================================
-    // DISPARADORES
-    // =========================================================================
-    setInterval(rodarAuditoriaGlobal, 1500);
+    // ============ INICIAR ============
+    function iniciar() {
+        log(`🚀 v${CFG.VERSAO}`);
 
-    // Inicia o esconder botão
-    setTimeout(esconderBotaoProtocolo, 500);
-    setTimeout(esconderBotaoProtocolo, 1500);
-    setTimeout(esconderBotaoProtocolo, 3000);
-    setTimeout(esconderBotaoProtocolo, 5000);
+        criarContainers();
 
-    const observador = new MutationObserver(() => {
-        try {
-            processarAlertas();
-            // Tenta esconder o botão sempre que houver mudanças na página
-            esconderBotaoProtocolo();
-        } catch (e) {}
-    });
-    observador.observe(document.body, { childList: true, subtree: true });
+        // Auditor
+        setInterval(rodarAuditoria, CFG.AUDITOR_INTERVAL);
 
-    setTimeout(() => {
-        try {
-            processarAlertas();
-        } catch (e) {}
-    }, 2000);
+        // Esconder botão
+        [500, 1500, 3000, 5000].forEach(ms => setTimeout(esconderBotao, ms));
 
-    setTimeout(() => {
-        try {
-            processarAlertas();
-        } catch (e) {}
-    }, 5000);
+        // Observer
+        const observer = new MutationObserver(() => {
+            try {
+                processarDebounced();
+                esconderBotao();
+            } catch (e) {}
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
 
-    console.log(`✅ ${SCRIPT_VERSION} - Alertas: Troca de Endereço, OsirFone, OsirMóvel, WiFi Pro, WiFi Enterprise`);
-    console.log(`✅ Auditor de estoque ativo`);
-    console.log(`✅ Detecção melhorada para "Osir Fone" com espaço`);
-    console.log(`✅ Botão "Abrir novo protocolo" será escondido automaticamente`);
+        // Inicialização
+        setTimeout(processarAlertas, 2000);
+        setTimeout(processarAlertas, 5000);
+
+        log('✅ Alertas: Troca de Endereço, OsirFone, OsirMóvel, WiFi Pro, WiFi Enterprise');
+        log(`✅ Auditor: intervalo ${CFG.AUDITOR_INTERVAL}ms`);
+        log(`✅ Debounce: ${CFG.DEBOUNCE_DELAY}ms`);
+        log('✅ Botão "Abrir novo protocolo" escondido');
+    }
+
+    // ============ EXECUTAR ============
+    if (location.href.includes('erp.osirnet.com.br')) {
+        setTimeout(iniciar, 500);
+    }
 
 })();
