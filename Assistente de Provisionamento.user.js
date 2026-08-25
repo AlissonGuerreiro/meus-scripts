@@ -41,11 +41,11 @@
             larguraMax: 500,
             larguraPadrao: 350,
             alturaMin: 250,
-            alturaMax: 600,
-            alturaPadrao: 550,
-            fonteMin: 9,
-            fonteMax: 16,
-            fontePadrao: 11,
+            alturaMax: 750,
+            alturaPadrao: 750,
+            fonteMin: 16,
+            fonteMax: 30,
+            fontePadrao: 14,
             passo: 15
         }
     };
