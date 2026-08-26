@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Osir - Assistente de Provisionamento
 // @namespace    http://tampermonkey.net/
-// @version      8.3.0
+// @version      8.5.0
 // @description  Provisionamento - Fila e Contrato (Versão Rústica)
 // @author       Alisson Guerreiro
 // @match        https://atendimento.osir.net.br/inviabilidade/huawei/filaProvisionamento.php
@@ -20,7 +20,7 @@
     // ============ CONFIG ============
     const CFG = {
         DEBUG: true,
-        VERSAO: '8.3.0',
+        VERSAO: '8.4.0',
         URL_ATENDIMENTO: 'filaProvisionamento.php',
         URL_CONTRATO: 'authentication_contracts/contract_panel',
         URL_OPERACAO: '/legacy/operations/',
@@ -186,6 +186,50 @@
         if (/^\d+$/.test(slot)) slot = String(slot).padStart(2, '0');
         if (/^\d+$/.test(porta)) porta = String(porta).padStart(2, '0');
         return `${pe} ${slot} ${porta}`;
+    }
+
+    // ============ GET TIPO PROVISIONAMENTO POR MODELO ============
+    function getTipoProvisionamentoPorModelo(modeloLabel) {
+        const modelosBridge = [
+            'Huawei Bridge', 'ZTE Bridge', 'Raisecom Bridge',
+            'Raisecom Bridge (Des.)', 'Ektech Bridge'
+        ];
+        const modelosRouter = [
+            'Huawei Router', 'Raisecom Router', 'ZTE Router'
+        ];
+
+        if (modelosBridge.includes(modeloLabel)) return 'b';
+        if (modelosRouter.includes(modeloLabel)) return 'r';
+        return 'b';
+    }
+
+    // ============ PREENCHER VLAN E PORTA WEB ============
+    function preencherVlanEPortaWeb() {
+        const dados = getDadosContrato();
+        const modelo = getModeloSelecionado();
+        const tipoProv = getTipoProvisionamentoPorModelo(modelo);
+
+        const vlan = calcularVlan('', dados.slot, dados.porta);
+        const portaWeb = definirPortaWeb(tipoProv);
+
+        const campoVlan = getEl('AuthenticationContractVlan');
+        if (campoVlan && vlan && vlan !== 'XX') {
+            campoVlan.value = vlan;
+            campoVlan.dispatchEvent(new Event('input', { bubbles: true }));
+            campoVlan.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+
+        const campoPortaWeb = getEl('AuthenticationContractEquipmentPort');
+        if (campoPortaWeb && portaWeb) {
+            campoPortaWeb.value = portaWeb;
+            campoPortaWeb.dispatchEvent(new Event('input', { bubbles: true }));
+            campoPortaWeb.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+
+        const vlanDisplay = getEl('osir-vlan-display');
+        const portaDisplay = getEl('osir-portaweb-display');
+        if (vlanDisplay) vlanDisplay.textContent = vlan || '---';
+        if (portaDisplay) portaDisplay.textContent = portaWeb || '80';
     }
 
     // ============ MONTAR COMPLEMENTO ============
@@ -1094,16 +1138,19 @@
         const portaWeb = tipo === 'b' ? '8092' : '80';
         const vlan = calcularVlan('', dados.slot, dados.porta);
 
+        // Atualizar VLAN e Porta Web no formulário
         const campoVlan = getEl('AuthenticationContractVlan');
         if (campoVlan && vlan !== 'XX') {
             campoVlan.value = vlan;
             campoVlan.dispatchEvent(new Event('input', { bubbles: true }));
+            campoVlan.dispatchEvent(new Event('change', { bubbles: true }));
         }
 
         const campoPorta = getEl('AuthenticationContractEquipmentPort');
         if (campoPorta) {
             campoPorta.value = portaWeb;
             campoPorta.dispatchEvent(new Event('input', { bubbles: true }));
+            campoPorta.dispatchEvent(new Event('change', { bubbles: true }));
         }
 
         let partes = [];
@@ -1293,25 +1340,58 @@
         log(`✅ ${estado.partes.length} partes extraídas e opções marcadas`);
     }
 
-    // ============ ATUALIZAR (Mesclar) ============
+    // ============ ATUALIZAR (MESCLAR) - CORRIGIDO ============
     function atualizarMesclar() {
+        // Primeiro, atualizar VLAN e Porta Web com os dados do contrato
+        preencherVlanEPortaWeb();
+
+        // Se não houver partes carregadas, apenas preencher o complemento base
         if (!estado.partes.length) {
-            alert('Nenhuma parte carregada! Clique em "📥 Complementar" primeiro.');
+            const base = montarBase();
+            const campo = getEl('AuthenticationContractComplement');
+            if (campo) {
+                campo.value = base;
+                campo.dispatchEvent(new Event('input', { bubbles: true }));
+                campo.dispatchEvent(new Event('change', { bubbles: true }));
+                log('✅ Complemento base preenchido (sem partes)');
+
+                // Atualizar preview
+                const preview = getEl('osir-preview-novo');
+                if (preview) preview.textContent = base;
+
+                // Feedback visual
+                const btn = document.querySelector('#osir-config-complement-window .btn-atualizar');
+                if (btn) {
+                    btn.textContent = '✅ OK';
+                    btn.style.background = '#10b981';
+                    setTimeout(() => {
+                        btn.textContent = '🔄 Atualizar';
+                        btn.style.background = '#7c3aed';
+                    }, CFG.TIMINGS.FEEDBACK);
+                }
+            }
             return;
         }
 
-        log('🔄 Mesclando...');
+        log('🔄 Mesclando partes mantidas + dados do contrato...');
 
         const mantidas = estado.partes.filter(p => p.manter).map(p => p.texto);
         const base = montarBase();
         const itensBase = base.split('||').map(p => p.trim()).filter(p => p.length);
 
+        if (itensBase.length === 0 && mantidas.length === 0) {
+            alert('Nenhum dado para gerar o complemento!');
+            return;
+        }
+
+        // Mapear base por tipo
         const mapaBase = {};
         itensBase.forEach(item => {
             const tipo = identificarTipo(item);
             if (tipo !== 'desconhecido') mapaBase[tipo] = item;
         });
 
+        // Sobrescrever com mantidas
         mantidas.forEach(item => {
             const tipo = identificarTipo(item);
             if (tipo !== 'desconhecido') mapaBase[tipo] = item;
@@ -1319,7 +1399,7 @@
 
         const resultado = Object.values(mapaBase);
         const final = resultado.filter((v, i) => resultado.indexOf(v) === i);
-        const novo = final.join(' || ');
+        const novo = final.length ? final.join(' || ') : '';
 
         const campo = getEl('AuthenticationContractComplement');
         if (campo) {
@@ -1329,9 +1409,21 @@
             log('✅ Campo atualizado:', novo);
         }
 
+        // Recarregar partes
         complementar();
         const preview = getEl('osir-preview-novo');
-        if (preview) preview.textContent = novo;
+        if (preview) preview.textContent = novo || '(vazio)';
+
+        // Feedback visual
+        const btn = document.querySelector('#osir-config-complement-window .btn-atualizar');
+        if (btn) {
+            btn.textContent = '✅ OK';
+            btn.style.background = '#10b981';
+            setTimeout(() => {
+                btn.textContent = '🔄 Atualizar';
+                btn.style.background = '#7c3aed';
+            }, CFG.TIMINGS.FEEDBACK);
+        }
     }
 
     // ============ LIMPAR ============
