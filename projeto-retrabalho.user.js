@@ -3,12 +3,12 @@
 // @namespace    https://erp.osirnet.com.br/
 // @version      1.5.0
 // @description  Botão para registrar retrabalhos no ERP Osirnet
-// @author       Equipe
+// @author       Alisson Guerreiro
 // @match        https://erp.osirnet.com.br/ui/*
 // @grant        GM_addStyle
 // @run-at       document-idle
-// @downloadURL  https://raw.githubusercontent.com/SEU_USUARIO/projeto-retrabalho/main/projeto-retrabalho.user.js
-// @updateURL    https://raw.githubusercontent.com/SEU_USUARIO/projeto-retrabalho/main/projeto-retrabalho.user.js
+// @downloadURL  https://raw.githubusercontent.com/AlissonGuerreiro/meus-scripts/main/projeto-retrabalho.user.js
+// @updateURL    https://raw.githubusercontent.com/AlissonGuerreiro/meus-scripts/main/projeto-retrabalho.user.js
 // ==/UserScript==
 
 (function () {
