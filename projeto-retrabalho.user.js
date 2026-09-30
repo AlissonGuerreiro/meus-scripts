@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Projeto Retrabalho
 // @namespace    https://erp.osirnet.com.br/
-// @version      1.5.3
+// @version      1.5.4
 // @description  Botão para registrar retrabalhos no ERP Osirnet
 // @author       Alisson Guerreiro
 // @match        https://erp.osirnet.com.br/ui/*
@@ -29,11 +29,11 @@
 
   const TIPOS_RETRABALHO = [
     'Provisionamento',
-    'Alteração',
+    'Etiqueta',
     'Suporte',
     'Instalação',
     'Configuração',
-    'Falha',
+    'Sinal',
     'Outros'
   ];
 
