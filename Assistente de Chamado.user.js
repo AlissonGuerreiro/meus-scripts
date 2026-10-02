@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Osir - Assistente de Chamado (Rústico)
 // @namespace    http://tampermonkey.net/
-// @version      2.0.0
+// @version      2.1.1
 // @description  Alertas automáticos de planos, auditor de estoque e esconder botão
 // @author       Alisson Guerreiro
 // @match        https://erp.osirnet.com.br/*
@@ -14,7 +14,7 @@
 
     // ============ CONFIG ============
     const CFG = {
-        VERSAO: '2.0.0',
+        VERSAO: '2.1.1',
         AUDITOR_INTERVAL: 2000,
         DEBOUNCE_DELAY: 400,
         MAX_CABO_DROP: 350,
@@ -34,7 +34,8 @@
         "FITA DE ACO INOX 430 LAMINADO A FRIO LISA 3/4 - 05 MM X 25MTS", "PF CHIP RT CB CH PH BC 3,5X25MM",
         "BUCHA FIXACAO 6MM", "PARAFUSO 10 x 55 mm", "ARAME DE ESPINAR ISOLADO METALICO FEI125V 105M",
         "FITA ISOLANTE PRETA 19MM X 10M", "BUCHA DE PAREDE 10mm", "ABRACADEIRA DE FIXACAO 28CM X 4,80MM - PRETA",
-        "FIXA FIO BRANCO UNIDADE", "SUPORTE EMENDA 3/4", "SUPORTE DE ANTENA - MODELO CAVALETE PARA PAREDE 3/4"
+        "FIXA FIO BRANCO UNIDADE", "SUPORTE EMENDA 3/4", "SUPORTE DE ANTENA - MODELO CAVALETE PARA PAREDE 3/4", "ABRAÇADEIRA BAP 3", "PARAFUSO J PARA BAP", "SUPA 2"
+
     ];
 
     const FERRAMENTAS = [
@@ -194,16 +195,101 @@
         }
     }
 
-    // ============ DETECTAR SERVIÇO ============
+    // ============ DETECTAR SERVIÇO (tolerante a variações de escrita) ============
+
+    // Limpeza pesada: sem acento, minúsculo, qualquer pontuação vira espaço
+    // "Wi-Fi Pró" / "wi_fi pro" / "WI.FI  PRO" -> "wi fi pro"
+    function limparParaBusca(texto) {
+        return texto
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, ' ')
+            .trim();
+    }
+
+    function levenshtein(a, b) {
+        const dp = Array.from({ length: a.length + 1 }, (_, i) => [i]);
+        for (let j = 1; j <= b.length; j++) dp[0][j] = j;
+        for (let i = 1; i <= a.length; i++) {
+            for (let j = 1; j <= b.length; j++) {
+                dp[i][j] = Math.min(
+                    dp[i - 1][j] + 1,
+                    dp[i][j - 1] + 1,
+                    dp[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
+                );
+            }
+        }
+        return dp[a.length][b.length];
+    }
+
+    // Procura "alvo" dentro do texto compacto (sem espaços) tolerando até `max` erros
+    function fuzzyContem(compacto, alvo, max = 1) {
+        const n = alvo.length;
+        for (let i = 0; i <= compacto.length - n + 1; i++) {
+            for (const len of [n - 1, n, n + 1]) {
+                const sub = compacto.substr(i, len);
+                if (sub.length >= n - 1 && levenshtein(sub, alvo) <= max) return true;
+            }
+        }
+        return false;
+    }
+
+    const WIFI = 'w+i+\\s*f+[iy]+';   // wifi, wi fi, wiffi, wify, wii fi
+    const OSIR = 'o[sz]i?e?r';        // osir, ozir, oser, osr
+
+    const PADROES_SERVICO = {
+        wifiPro: new RegExp(`(?<![a-z])${WIFI}\\s*(profissional|pro)(?![a-z])`),
+        wifiEnterprise: new RegExp(`(?<![a-z])${WIFI}\\s*(ent[ea]r?pr[iy][sz][ec]|empresarial|business)`),
+        osirFone: new RegExp(`(?<![a-z])${OSIR}\\s*(fone|phone|telefon[a-z]*|fixa)|telefonia\\s+(fixa|osir)|telefonia\\s+x\\s+sim`),
+        osirMovel: new RegExp(`(?<![a-z])${OSIR}\\s*(m[oae]v[ei]l|mobile|chip|celular|cel)(?![a-z])|chip\\s*${OSIR}`)
+    };
+
+    // Alvos do fallback por aproximação (texto sem espaços)
+    // Para desligar o fallback de um serviço, coloque max: -1
+    const ALVOS_FUZZY = {
+        wifiPro: { alvo: 'wifipro', max: 1 },
+        wifiEnterprise: { alvo: 'wifienterprise', max: 2 },
+        osirFone: { alvo: 'osirfone', max: 1 },
+        osirMovel: { alvo: 'osirmovel', max: 1 }
+    };
+
     function detectarServico(texto, servico) {
-        const t = texto.toLowerCase();
-        const patterns = {
-            wifiPro: [/wifi\s*pro/, /wi-fi\s*pro/, /wi\s*fi\s*pro/, /wifipro/, /wifi\s*profissional/],
-            wifiEnterprise: [/wifi\s*enterprise/, /wi-fi\s*enterprise/, /wi\s*fi\s*enterprise/, /wifi\s+empresarial/],
-            osirFone: [/osir\s*fone/, /osirfone/, /osir\s+telefone/, /telefonia\s+osir/, /osir\s+fixa/],
-            osirMovel: [/osir\s*m[oó]vel/, /osirm[oó]vel/, /chip\s+osir/, /osir\s+chip/, /osir\s+celular/]
-        };
-        return (patterns[servico] || []).some(p => p.test(t));
+        const t = limparParaBusca(texto);
+
+        // 1) regex tolerante
+        const rx = PADROES_SERVICO[servico];
+        if (rx && rx.test(t)) return true;
+
+        // 2) fallback: erro de digitação
+        const f = ALVOS_FUZZY[servico];
+        if (f && f.max >= 0 && fuzzyContem(t.replace(/ /g, ''), f.alvo, f.max)) {
+            log(`🔎 ${servico} detectado por aproximação`);
+            return true;
+        }
+        return false;
+    }
+
+    // Remove campos do tipo "Rótulo: ( ) Sim (X) Não" (marcados como NÃO),
+    // para que o nome do serviço no rótulo não dispare alerta indevido.
+    // Espera texto já normalizado (minúsculo, sem acento).
+    function removerCamposNao(txt) {
+        return txt.replace(
+            /[a-z0-9 \/\-]{0,40}:\s*[\(\[]\s*[\)\]]\s*sim\s*[\(\[]\s*x\s*[\)\]]\s*nao/g,
+            ' '
+        );
+    }
+
+    // Lê o campo "Custo R$ 80,00 (troca < 3 meses): ( ) Sim (X) Não"
+    // Retorna true (cobrar), false (não cobrar) ou null (campo não encontrado)
+    // Espera texto já normalizado (minúsculo, sem acento).
+    function cobrancaOitentaMarcada(txt) {
+        const m = txt.match(
+            /custo[^:]{0,60}?80[^:]{0,40}:\s*[\(\[]\s*(x?)\s*[\)\]]\s*sim\s*[\(\[]\s*(x?)\s*[\)\]]\s*nao/
+        );
+        if (!m) return null;
+        const sim = m[1] === 'x';
+        const nao = m[2] === 'x';
+        return sim && !nao;
     }
 
     // ============ OBTER TEXTO DA OS ============
@@ -283,18 +369,29 @@
 
             let txt = normalizarTexto(texto).replace(/https?:\/\/\S+/gi, '').replace(/\S+@\S+\.\S+/gi, '');
 
-            // Troca de Endereço
+            // ---------- Troca de Endereço ----------
             if (categoria.toLowerCase().includes('troca') && categoria.toLowerCase().includes('ender')) {
-                if (/custo[\s\S]*?80\s*00/.test(txt) && /\([\s]*x[\s]*\)\s*sim|sim\s*\([\s]*x[\s]*\)/.test(txt)) {
+                const cobra = cobrancaOitentaMarcada(txt);
+                log('Troca de endereço - cobrança R$ 80:', cobra);
+
+                if (cobra === true) {
                     containers.alertas.appendChild(cardAlerta(
                         'ENVIAR PARA SAC N2 FAZER A COBRANÇA DE R$ 80,00!',
                         '#ffebee', '#c62828', '#d32f2f', '⚠️'
+                    ));
+                } else if (cobra === null) {
+                    containers.alertas.appendChild(cardAlerta(
+                        'NÃO CONSEGUI LER O CAMPO DE CUSTO R$ 80,00. CONFERIR MANUALMENTE!',
+                        '#fffde7', '#f57f17', '#fbc02d', '❓'
                     ));
                 }
                 return;
             }
 
-            // Serviços
+            // ---------- Serviços ----------
+            // Remove campos marcados como "Não" antes de procurar os nomes
+            const txtServicos = removerCamposNao(txt);
+
             const servicos = [
                 { id: 'wifiPro', label: 'WIFI-PRO: VERIFICAR SE FOI INSTALADO!', cor: '#f3e5f5', texto: '#4a148c', borda: '#9c27b0', icone: '🌐' },
                 { id: 'wifiEnterprise', label: 'WIFI ENTERPRISE: VERIFICAR. EQUIP: ONU > RB > EAPs', cor: '#e8f5e9', texto: '#1b5e20', borda: '#43a047', icone: '🏢' },
@@ -303,7 +400,7 @@
             ];
 
             servicos.forEach(s => {
-                if (detectarServico(txt, s.id)) {
+                if (detectarServico(txtServicos, s.id)) {
                     containers.alertas.appendChild(cardAlerta(s.label, s.cor, s.texto, s.borda, s.icone));
                     log(`✅ ${s.id} detectado!`);
                 }
@@ -402,6 +499,40 @@
             auditando = false;
         }
     }
+
+    // ============ FERRAMENTAS DE TESTE (console) ============
+    // No console da página:
+    //   TM_DEBUG.testar()          -> testa as variações de escrita
+    //   copy(TM_DEBUG.ultimoTexto) -> copia o texto exato que o script leu da OS
+    window.TM_DEBUG = {
+        detectarServico,
+        cobrancaOitentaMarcada,
+        removerCamposNao,
+        normalizarTexto,
+        get ultimoTexto() { return ultimoTexto; },
+        testar() {
+            const testes = {
+                wifiPro: ['Wifi pro', 'wi fi pro', 'wifipro', 'Wi-fi pró', 'WIFI-PRO', 'wi_fi pro', 'wifi por', 'wifii pro', 'Wifi Profissional'],
+                osirMovel: ['osir movel', 'osirmovel', 'Osir Móvel', 'osir-movel', 'chip osir', 'osir movl'],
+                osirFone: ['osir fone', 'osirfone', 'Osir-Fone', 'osir fome', 'telefonia fixa'],
+                wifiEnterprise: ['wifi enterprise', 'wi-fi enterprice', 'wifi empresarial']
+            };
+            for (const [srv, lista] of Object.entries(testes)) {
+                lista.forEach(t => console.log(detectarServico(t, srv) ? '✅' : '❌', srv, '→', t));
+            }
+
+            const cobr = [
+                ['Custo R$ 80,00 (troca < 3 meses): ( ) Sim (X ) Não', false],
+                ['Custo R$ 80,00 (troca < 3 meses): (X ) Sim ( ) Não', true],
+                ['Custo R$ 80,00 (troca < 3 meses): ( X) Sim ( ) Não', true],
+                ['Wifi Pro: ( ) Sim (X ) Não Custo R$ 80,00 (troca < 3 meses): ( ) Sim (X ) Não', false]
+            ];
+            cobr.forEach(([t, esperado]) => {
+                const r = cobrancaOitentaMarcada(normalizarTexto(t));
+                console.log(r === esperado ? '✅' : '❌', 'cobrança', '→', t, '=>', r);
+            });
+        }
+    };
 
     // ============ INICIAR ============
     function iniciar() {
