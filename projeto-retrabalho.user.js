@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Projeto Retrabalho
 // @namespace    https://erp.osirnet.com.br/
-// @version      1.7.0
+// @version      1.8.0
 // @description  Botão para registrar retrabalhos no ERP Osirnet
 // @author       Alisson Guerreiro
 // @match        https://erp.osirnet.com.br/ui/*
@@ -26,7 +26,7 @@
   const API_URL = 'https://script.google.com/macros/s/AKfycbwbzUOFp8iZkM1Rq04LPnEPWiL3_ixgZAP4N3Ugs-FLOG22FIoiYB1P2vbxe5TzjjU1uQ/exec';
   const API_TOKEN = 'ddc8394b-7d80-489e-8ba1-c665d78ded3b';
 
-  const VERSAO_SCRIPT = '1.7.0';
+  const VERSAO_SCRIPT = '1.8.0';
 
   const TIPOS_RETRABALHO = [
     'Provisionamento',
@@ -37,6 +37,18 @@
     'Sinal',
     'Outros'
   ];
+
+  // Mesmos limites do servidor (Code.gs → LIMITES). Se mudar lá, mude aqui.
+  const LIMITES = {
+    cliente:   120,
+    protocolo:  30,
+    categoria: 120,
+    relato:   2000,
+    usuario:   120
+  };
+
+  // Tempo máximo esperando o servidor responder
+  const TIMEOUT_ENVIO_MS = 20000;
 
   const NAVBAR_ID = 'navbar-menu-buttons';
 
@@ -91,6 +103,26 @@
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
+  }
+
+  // Protocolos já enviados nesta aba (evita registro duplicado por engano)
+  const CHAVE_ENVIADOS = 'rt_protocolos_enviados';
+
+  function jaEnviouProtocolo(protocolo) {
+    try {
+      const lista = JSON.parse(sessionStorage.getItem(CHAVE_ENVIADOS) || '[]');
+      return lista.indexOf(protocolo) !== -1;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function marcarProtocoloEnviado(protocolo) {
+    try {
+      const lista = JSON.parse(sessionStorage.getItem(CHAVE_ENVIADOS) || '[]');
+      if (lista.indexOf(protocolo) === -1) lista.push(protocolo);
+      sessionStorage.setItem(CHAVE_ENVIADOS, JSON.stringify(lista));
+    } catch (e) {}
   }
 
   // ============================================================
@@ -299,6 +331,8 @@
     .rt-field.rt-falha input { border-color: #e6a700; background: #fffbe6; }
     .rt-field textarea { min-height: 110px; resize: vertical; }
     .rt-aviso { font-size: 11px; color: #b07b00; margin-top: 3px; }
+    .rt-contador { font-size: 11px; color: #888; margin-top: 3px; text-align: right; }
+    .rt-contador.rt-limite { color: #c62828; font-weight: 700; }
 
     .rt-checkbox {
       display: flex; align-items: center; gap: 10px;
@@ -549,26 +583,26 @@
         <div class="rt-row rt-row-2">
           <div class="rt-field ${capturado.protocolo ? '' : 'rt-falha'}" data-campo="protocolo">
             <label for="rt-protocolo">Protocolo *</label>
-            <input id="rt-protocolo" type="text" value="${escaparHtml(capturado.protocolo)}" placeholder="Digite o protocolo">
+            <input id="rt-protocolo" type="text" maxlength="${LIMITES.protocolo}" value="${escaparHtml(capturado.protocolo)}" placeholder="Digite o protocolo">
             ${capturado.protocolo ? '' : '<div class="rt-aviso">⚠ Não capturado — preencha manualmente</div>'}
           </div>
           <div class="rt-field ${capturado.categoria ? '' : 'rt-falha'}" data-campo="categoria">
             <label for="rt-categoria">Categoria ERP</label>
-            <input id="rt-categoria" type="text" value="${escaparHtml(capturado.categoria)}" placeholder="Ex.: Fibra - Manutenção">
+            <input id="rt-categoria" type="text" maxlength="${LIMITES.categoria}" value="${escaparHtml(capturado.categoria)}" placeholder="Ex.: Fibra - Manutenção">
             ${capturado.categoria ? '' : '<div class="rt-aviso">⚠ Não capturado — preencha se aplicável</div>'}
           </div>
         </div>
 
         <div class="rt-field ${capturado.cliente ? '' : 'rt-falha'}" data-campo="cliente">
           <label for="rt-cliente">Cliente *</label>
-          <input id="rt-cliente" type="text" value="${escaparHtml(capturado.cliente)}" placeholder="Nome do cliente">
+          <input id="rt-cliente" type="text" maxlength="${LIMITES.cliente}" value="${escaparHtml(capturado.cliente)}" placeholder="Nome do cliente">
           ${capturado.cliente ? '' : '<div class="rt-aviso">⚠ Não capturado — preencha manualmente</div>'}
         </div>
 
         <div class="rt-row rt-row-2">
           <div class="rt-field">
             <label for="rt-usuario">Atendente</label>
-            <input id="rt-usuario" type="text" value="${escaparHtml(capturado.usuario)}" placeholder="Seu nome" ${usuarioEhReadonly ? 'readonly' : ''}>
+            <input id="rt-usuario" type="text" maxlength="${LIMITES.usuario}" value="${escaparHtml(capturado.usuario)}" placeholder="Seu nome" ${usuarioEhReadonly ? 'readonly' : ''}>
             ${capturado.usuario ? '' : '<div class="rt-aviso">⚠ Não capturado — preencha</div>'}
           </div>
           <div class="rt-field">
@@ -592,7 +626,8 @@
 
         <div class="rt-field">
           <label for="rt-relato">Relato *</label>
-          <textarea id="rt-relato" placeholder="Descreva o retrabalho..."></textarea>
+          <textarea id="rt-relato" maxlength="${LIMITES.relato}" placeholder="Descreva o retrabalho..."></textarea>
+          <div class="rt-contador" id="rt-contador">0 / ${LIMITES.relato}</div>
         </div>
       </div>
 
@@ -608,6 +643,15 @@
     modal.querySelector('.rt-close').addEventListener('click', fecharModal);
     modal.querySelector('.rt-btn-cancelar').addEventListener('click', fecharModal);
     modal.querySelector('.rt-btn-enviar').addEventListener('click', enviar);
+
+    // Contador de caracteres do Relato
+    const relatoEl = modal.querySelector('#rt-relato');
+    const contadorEl = modal.querySelector('#rt-contador');
+    relatoEl.addEventListener('input', () => {
+      const n = relatoEl.value.length;
+      contadorEl.textContent = n + ' / ' + LIMITES.relato;
+      contadorEl.classList.toggle('rt-limite', n >= LIMITES.relato);
+    });
 
     overlay.addEventListener('click', (ev) => {
       if (ev.target === overlay) fecharModal();
@@ -640,6 +684,7 @@
   // ============================================================
   function enviar() {
     const btn = document.querySelector('#rt-modal .rt-btn-enviar');
+    if (btn.disabled) return;
 
     const protocolo = document.getElementById('rt-protocolo').value.trim();
     const categoria = document.getElementById('rt-categoria').value.trim();
@@ -661,6 +706,15 @@
       return;
     }
 
+    // Mesmo protocolo já enviado nesta aba? Pede confirmação.
+    if (jaEnviouProtocolo(protocolo)) {
+      const seguir = window.confirm(
+        'O protocolo ' + protocolo + ' já foi registrado nesta sessão.\n\n' +
+        'Registrar de novo mesmo assim?'
+      );
+      if (!seguir) return;
+    }
+
     btn.disabled = true;
     btn.textContent = 'Enviando...';
 
@@ -673,32 +727,50 @@
       tipo: tipo,
       relato: relato,
       devolvido: devolvido,
-      origem: 'erp.osirnet.com.br',
+      origem: 'erp.osirnet.com.br/' + detectarModo(),
       versao: VERSAO_SCRIPT
     };
+
+    const controlador = new AbortController();
+    const timer = setTimeout(() => controlador.abort(), TIMEOUT_ENVIO_MS);
+
+    function liberarBotao() {
+      btn.disabled = false;
+      btn.textContent = 'Enviar';
+    }
 
     fetch(API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
+      signal: controlador.signal
     })
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
       .then((resp) => {
         if (resp && resp.success) {
+          marcarProtocoloEnviado(protocolo);
           mostrarToast('✅ Registro enviado: ' + resp.id, 'ok');
           fecharModal();
         } else {
           mostrarToast('❌ ' + ((resp && resp.message) || 'Erro desconhecido'), 'erro');
-          btn.disabled = false;
-          btn.textContent = 'Enviar';
+          liberarBotao();
         }
       })
       .catch((err) => {
         console.error('[Retrabalho] Erro no envio:', err);
-        mostrarToast('❌ Falha de rede. Tente novamente.', 'erro');
-        btn.disabled = false;
-        btn.textContent = 'Enviar';
-      });
+        if (err && err.name === 'AbortError') {
+          mostrarToast('❌ Tempo esgotado. O registro pode ter sido gravado: confira na planilha antes de reenviar.', 'erro');
+        } else if (err && err.name === 'SyntaxError') {
+          mostrarToast('❌ Resposta inválida do servidor. Confira na planilha antes de reenviar.', 'erro');
+        } else {
+          mostrarToast('❌ Falha de rede. Tente novamente.', 'erro');
+        }
+        liberarBotao();
+      })
+      .finally(() => clearTimeout(timer));
   }
 
   // ============================================================
@@ -719,7 +791,7 @@
     if (toastTimer) clearTimeout(toastTimer);
     toastTimer = setTimeout(() => {
       toast.className = tipo === 'ok' ? 'rt-ok' : 'rt-erro';
-    }, 3500);
+    }, tipo === 'ok' ? 3500 : 6000);
   }
 
   // ============================================================
