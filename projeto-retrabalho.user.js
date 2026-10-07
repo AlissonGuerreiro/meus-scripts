@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Projeto Retrabalho
 // @namespace    https://erp.osirnet.com.br/
-// @version      1.8.1
+// @version      1.9.0
 // @description  Botão para registrar retrabalhos no ERP Osirnet
 // @author       Alisson Guerreiro
 // @match        https://erp.osirnet.com.br/ui/*
@@ -26,7 +26,7 @@
   const API_URL = 'https://script.google.com/macros/s/AKfycbwbzUOFp8iZkM1Rq04LPnEPWiL3_ixgZAP4N3Ugs-FLOG22FIoiYB1P2vbxe5TzjjU1uQ/exec';
   const API_TOKEN = 'ddc8394b-7d80-489e-8ba1-c665d78ded3b';
 
-  const VERSAO_SCRIPT = '1.8.1';
+  const VERSAO_SCRIPT = '1.9.0';
 
   const TIPOS_RETRABALHO = [
     'Provisionamento',
@@ -40,6 +40,21 @@
     'Terceiros',
     'Outros'
   ];
+
+  // Explicação de cada tipo (aparece no formulário).
+  // O nome (entre aspas, à esquerda) tem que ser IGUAL ao da lista acima.
+  const DESCRICOES_TIPOS = {
+    'Provisionamento': 'O técnico provisionou, mas desprovisionou ao sair. Ou, no encerramento, ainda faltava provisionar.',
+    'Etiqueta': 'Etiquetas abertas erradas, ou abertas para contratos que não têm conexão.',
+    'Suporte': 'Suporte abriu OS sem necessidade (ex.: cliente com bloqueio) ou deletou equipamento para arrumar LOS, etc.',
+    'Instalação': 'Algo identificado na instalação que ficou fora do padrão.',
+    'Material/Equipamento': 'Equipamento ou material que não foi alocado.',
+    'Sinal': 'Todos os casos em que o sinal ficou fora do padrão no encerramento.',
+    'Chip': 'Técnico da casa que não levou o chip, ou não levou a quantidade correta para o cliente.',
+    'Wifi-Pro': 'O técnico fez toda a instalação, mas não fez o mesh.',
+    'Terceiros': 'Qualquer problema gerado pela terceirizada.',
+    'Outros': 'Todo o resto.'
+  };
 
   // Mesmos limites do servidor (Code.gs → LIMITES). Se mudar lá, mude aqui.
   const LIMITES = {
@@ -337,6 +352,17 @@
     .rt-contador { font-size: 11px; color: #888; margin-top: 3px; text-align: right; }
     .rt-contador.rt-limite { color: #c62828; font-weight: 700; }
 
+    .rt-dica {
+      font-size: 12px; color: #444; background: #f7f7f7;
+      border-left: 3px solid #f6b706; border-radius: 4px;
+      padding: 8px 10px; margin-top: 6px; line-height: 1.4;
+    }
+    .rt-dica.rt-dica-vazia { color: #888; border-left-color: #ddd; }
+    .rt-lista-tipos { margin-top: 6px; font-size: 12px; color: #444; }
+    .rt-lista-tipos summary { cursor: pointer; color: #1c2064; font-weight: 600; }
+    .rt-lista-tipos ul { margin: 6px 0 0; padding-left: 18px; }
+    .rt-lista-tipos li { margin-bottom: 4px; line-height: 1.4; }
+
     .rt-checkbox {
       display: flex; align-items: center; gap: 10px;
       padding: 12px 14px; border: 1px solid #e0e0e0;
@@ -623,8 +649,15 @@
           <label for="rt-tipo">Tipo de retrabalho *</label>
           <select id="rt-tipo">
             <option value="">Selecione...</option>
-            ${TIPOS_RETRABALHO.map(t => `<option value="${escaparHtml(t)}">${escaparHtml(t)}</option>`).join('')}
+            ${TIPOS_RETRABALHO.map(t => `<option value="${escaparHtml(t)}" title="${escaparHtml(DESCRICOES_TIPOS[t] || '')}">${escaparHtml(t)}</option>`).join('')}
           </select>
+          <div class="rt-dica rt-dica-vazia" id="rt-dica-tipo">Escolha um tipo para ver o que ele significa.</div>
+          <details class="rt-lista-tipos">
+            <summary>Ver o que cada tipo significa</summary>
+            <ul>
+              ${TIPOS_RETRABALHO.map(t => `<li><b>${escaparHtml(t)}</b>: ${escaparHtml(DESCRICOES_TIPOS[t] || '')}</li>`).join('')}
+            </ul>
+          </details>
         </div>
 
         <div class="rt-field">
@@ -654,6 +687,20 @@
       const n = relatoEl.value.length;
       contadorEl.textContent = n + ' / ' + LIMITES.relato;
       contadorEl.classList.toggle('rt-limite', n >= LIMITES.relato);
+    });
+
+    // Explicação do tipo escolhido
+    const tipoEl = modal.querySelector('#rt-tipo');
+    const dicaEl = modal.querySelector('#rt-dica-tipo');
+    tipoEl.addEventListener('change', () => {
+      const desc = DESCRICOES_TIPOS[tipoEl.value];
+      if (desc) {
+        dicaEl.textContent = desc;
+        dicaEl.classList.remove('rt-dica-vazia');
+      } else {
+        dicaEl.textContent = 'Escolha um tipo para ver o que ele significa.';
+        dicaEl.classList.add('rt-dica-vazia');
+      }
     });
 
     overlay.addEventListener('click', (ev) => {
