@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Projeto Retrabalho
 // @namespace    https://erp.osirnet.com.br/
-// @version      1.8.0
+// @version      1.8.1
 // @description  Botão para registrar retrabalhos no ERP Osirnet
 // @author       Alisson Guerreiro
 // @match        https://erp.osirnet.com.br/ui/*
@@ -26,7 +26,7 @@
   const API_URL = 'https://script.google.com/macros/s/AKfycbwbzUOFp8iZkM1Rq04LPnEPWiL3_ixgZAP4N3Ugs-FLOG22FIoiYB1P2vbxe5TzjjU1uQ/exec';
   const API_TOKEN = 'ddc8394b-7d80-489e-8ba1-c665d78ded3b';
 
-  const VERSAO_SCRIPT = '1.8.0';
+  const VERSAO_SCRIPT = '1.8.1';
 
   const TIPOS_RETRABALHO = [
     'Provisionamento',
