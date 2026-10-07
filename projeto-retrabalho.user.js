@@ -35,6 +35,9 @@
     'Instalação',
     'Material/Equipamento',
     'Sinal',
+    'Chip',
+    'Wifi-Pro',
+    'Terceiros',
     'Outros'
   ];
 
