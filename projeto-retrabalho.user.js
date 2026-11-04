@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Projeto Retrabalho
 // @namespace    https://erp.osirnet.com.br/
-// @version      1.9.0
+// @version      1.10.0
 // @description  Botão para registrar retrabalhos no ERP Osirnet
 // @author       Alisson Guerreiro
 // @match        https://erp.osirnet.com.br/ui/*
@@ -26,8 +26,9 @@
   const API_URL = 'https://script.google.com/macros/s/AKfycbwbzUOFp8iZkM1Rq04LPnEPWiL3_ixgZAP4N3Ugs-FLOG22FIoiYB1P2vbxe5TzjjU1uQ/exec';
   const API_TOKEN = 'ddc8394b-7d80-489e-8ba1-c665d78ded3b';
 
-  const VERSAO_SCRIPT = '1.9.0';
+  const VERSAO_SCRIPT = '1.10.0';
 
+  // A ordem aqui tem que ser a MESMA do Code.gs → TIPOS_VALIDOS
   const TIPOS_RETRABALHO = [
     'Provisionamento',
     'Etiqueta',
@@ -37,6 +38,7 @@
     'Sinal',
     'Chip',
     'Wifi-Pro',
+    'Técnico',
     'Terceiros',
     'Outros'
   ];
@@ -52,6 +54,7 @@
     'Sinal': 'Todos os casos em que o sinal ficou fora do padrão no encerramento.',
     'Chip': 'Técnico da casa que não levou o chip, ou não levou a quantidade correta para o cliente.',
     'Wifi-Pro': 'O técnico fez toda a instalação, mas não fez o mesh.',
+    'Técnico': 'Técnico com dificuldade em realizar algum procedimento básico.',
     'Terceiros': 'Qualquer problema gerado pela terceirizada.',
     'Outros': 'Todo o resto.'
   };
@@ -363,6 +366,7 @@
     .rt-lista-tipos ul { margin: 6px 0 0; padding-left: 18px; }
     .rt-lista-tipos li { margin-bottom: 4px; line-height: 1.4; }
 
+    /* A caixa inteira é um <label>: clicar em qualquer lugar marca/desmarca */
     .rt-checkbox {
       display: flex; align-items: center; gap: 10px;
       padding: 12px 14px; border: 1px solid #e0e0e0;
@@ -375,9 +379,8 @@
       width: 18px; height: 18px; cursor: pointer;
       accent-color: #f6b706; margin: 0; flex-shrink: 0;
     }
-    .rt-checkbox label {
+    .rt-checkbox span {
       font-size: 14px; font-weight: 500; color: #333;
-      text-transform: none; letter-spacing: 0; cursor: pointer; margin: 0;
     }
 
     .rt-footer {
@@ -407,6 +410,7 @@
     }
     #rt-toast.rt-show { opacity: 1; transform: translateY(0); }
     #rt-toast.rt-ok { background: #2e7d32; }
+    #rt-toast.rt-info { background: #1c2064; }
     #rt-toast.rt-erro { background: #c62828; }
   `;
 
@@ -521,14 +525,8 @@
 
   function posicionarBotaoFlutuante() {
     const btn = document.getElementById('rt-btn-flutuante');
-    if (!btn || !btn.classList.contains('rt-modo-navbar')) {
-      // Se está em modo navbar, não mexe na posição
-      if (btn && btn.classList.contains('rt-modo-navbar')) return;
-    }
-
-    // Se está em modo attendance (não tem a classe navbar), posiciona
-    if (!btn) return;
-    if (btn.classList.contains('rt-modo-navbar')) return;
+    // Sem botão, ou botão na navbar (modo ui): não mexe na posição
+    if (!btn || btn.classList.contains('rt-modo-navbar')) return;
 
     const stepper = acharStepper();
     if (!stepper) return;
@@ -562,14 +560,11 @@
     // Sempre anexa ao body (para position:fixed funcionar corretamente)
     if (btn.parentElement !== document.body) {
       document.body.appendChild(btn);
+      logar('Botão posicionado à esquerda do stepper (modo attendance)');
     }
 
     // Posiciona após o próximo frame para garantir que o layout está pronto
-    requestAnimationFrame(() => {
-      posicionarBotaoFlutuante();
-    });
-
-    logar('Botão posicionado à esquerda do stepper (modo attendance)');
+    requestAnimationFrame(posicionarBotaoFlutuante);
     return true;
   }
 
@@ -640,10 +635,10 @@
           </div>
         </div>
 
-        <div class="rt-checkbox" onclick="if(event.target.tagName!=='INPUT'&&event.target.tagName!=='LABEL'){this.querySelector('input').click();}">
+        <label class="rt-checkbox" for="rt-devolvido">
           <input id="rt-devolvido" type="checkbox">
-          <label for="rt-devolvido">Protocolo foi devolvido?</label>
-        </div>
+          <span>Protocolo foi devolvido?</span>
+        </label>
 
         <div class="rt-field">
           <label for="rt-tipo">Tipo de retrabalho *</label>
@@ -802,7 +797,12 @@
       .then((resp) => {
         if (resp && resp.success) {
           marcarProtocoloEnviado(protocolo);
-          mostrarToast('✅ Registro enviado: ' + resp.id, 'ok');
+          if (resp.duplicado) {
+            // O servidor viu que esse mesmo registro já tinha sido gravado
+            mostrarToast('ℹ Esse registro já estava gravado: ' + resp.id, 'info');
+          } else {
+            mostrarToast('✅ Registro enviado: ' + resp.id, 'ok');
+          }
           fecharModal();
         } else {
           mostrarToast('❌ ' + ((resp && resp.message) || 'Erro desconhecido'), 'erro');
@@ -835,13 +835,14 @@
       toast.id = 'rt-toast';
       document.body.appendChild(toast);
     }
-    toast.className = 'rt-show ' + (tipo === 'ok' ? 'rt-ok' : 'rt-erro');
+    const classe = tipo === 'ok' ? 'rt-ok' : tipo === 'info' ? 'rt-info' : 'rt-erro';
+    toast.className = 'rt-show ' + classe;
     toast.textContent = mensagem;
 
     if (toastTimer) clearTimeout(toastTimer);
     toastTimer = setTimeout(() => {
-      toast.className = tipo === 'ok' ? 'rt-ok' : 'rt-erro';
-    }, tipo === 'ok' ? 3500 : 6000);
+      toast.className = classe;
+    }, tipo === 'erro' ? 6000 : 3500);
   }
 
   // ============================================================
