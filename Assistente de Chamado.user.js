@@ -4,6 +4,10 @@
 // @version      3.7.1
 // @description  Alertas de serviços da OS, auditor de estoque e trava antes de finalizar
 // @author       Alisson Guerreiro
+// @homepage     https://github.com/AlissonGuerreiro/meus-scripts
+// @supportURL   https://github.com/AlissonGuerreiro/meus-scripts/issues
+// @downloadURL  https://raw.githubusercontent.com/AlissonGuerreiro/meus-scripts/main/Assistente%20de%20Chamado.user.js
+// @updateURL    https://raw.githubusercontent.com/AlissonGuerreiro/meus-scripts/main/Assistente%20de%20Chamado.user.js
 // @match        https://erp.osirnet.com.br/*
 // @grant        none
 // @run-at       document-start
