@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Osir - Assistente de Chamado
 // @namespace    http://tampermonkey.net/
-// @version      3.7.1
+// @version      3.7.2
 // @description  Alertas de serviços da OS, auditor de estoque e trava antes de finalizar
 // @author       Alisson Guerreiro
 // @homepage     https://github.com/AlissonGuerreiro/meus-scripts
@@ -14,6 +14,12 @@
 // ==/UserScript==
 
 /*
+  O QUE MUDOU NA 3.7.2
+  - CORRIGIDO: com mais de um cliente aberto, os avisos de SERVIÇO (chip, Wi-Fi Pro, fone)
+    liam o cliente ERRADO (a primeira aba aberta, mesmo escondida). Agora leem só o
+    cliente que está NA TELA.
+  - O aviso do chip mostra a QUANTIDADE quando dá para ler (ex.: "2 CHIPS").
+
   O QUE MUDOU NA 3.7 (versão oficial)
   - Avisos de MATERIAIS (limite, ferramenta, fora do padrão...) ficam NA BARRA AZUL DO TOPO,
     do lado esquerdo do botão "Registrar Retrabalho", no mesmo tamanho dele.
@@ -176,7 +182,7 @@
 
     // ============ CONFIG (pode mexer aqui) ============
     const CFG = {
-        VERSAO: '3.7.1',
+        VERSAO: '3.7.2',
         CICLO: 1500,            // de quanto em quanto tempo confere a tela (ms)
         DEBUG: false,           // true = mostra mensagens no console
 
@@ -483,12 +489,31 @@
     }
 
     // ============ SERVIÇOS (só aviso, sem caixinha) ============
-    function lerServicos() {
-        let input = null, doc = null;
-        for (const d of documentos()) {
-            const i = d.getElementById('serviceCategoryId1');
-            if (i) { input = i; doc = d; break; }
+    // Documento do cliente que está NA TELA (ignora abas de outros clientes escondidas)
+    function docDaOSNaTela() {
+        for (const f of document.querySelectorAll('iframe')) {
+            try {
+                if (f.offsetParent === null) continue;   // aba escondida
+                const d = f.contentDocument;
+                if (d && d.getElementById('serviceCategoryId1')) return d;
+            } catch (e) { /* iframe de outro site: ignora */ }
         }
+        if (document.getElementById('serviceCategoryId1')) return document;
+        return null;
+    }
+
+    // Quantos chips: "02 Osirmóvel", "2 chips", "2x osir movel" -> 2
+    function contarChips(txt) {
+        let maior = 0;
+        for (const m of txt.matchAll(/(?<!\d)(\d{1,2})\s*(?:x\s*)?(?:-\s*)?(?:o[sz]i?e?r\s*m[oae]v[ei]l|chips?)(?![a-z])/g)) {
+            maior = Math.max(maior, parseInt(m[1], 10));
+        }
+        return maior;
+    }
+
+    function lerServicos() {
+        const doc = docDaOSNaTela();
+        const input = doc && doc.getElementById('serviceCategoryId1');
         if (!input) { limparOS(); return; }
 
         const categoria = input.value?.trim() || '';
@@ -521,7 +546,16 @@
         } else if (nivel === 'tudo') {
             const txtServicos = removerCamposNao(txt);
             SERVICOS.forEach(s => {
-                if (detectarServico(txtServicos, s.id)) itens.push({ ...s });
+                if (!detectarServico(txtServicos, s.id)) return;
+                const item = { ...s };
+                if (s.id === 'osirMovel') {
+                    const n = contarChips(txtServicos);
+                    if (n > 1) {
+                        item.curto = `${n} CHIPS OSIRMÓVEL`;
+                        item.label = `OSIRMÓVEL: VERIFICAR SE OS ${n} CHIPS FORAM ENTREGUES!`;
+                    }
+                }
+                itens.push(item);
             });
         }
 
