@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Projeto Retrabalho TESTE
 // @namespace    https://erp.osirnet.com.br/
-// @version      2.0.0-teste.6
+// @version      2.0.0-teste.8
 // @description  [TESTE] Registrar retrabalhos no ERP Osirnet (Técnico x Relacionamento)
 // @author       Alisson Guerreiro
 // @match        https://erp.osirnet.com.br/ui/*
@@ -44,7 +44,7 @@
   // ============================================================
   const API_URL = 'https://script.google.com/macros/s/AKfycbxmBVTRZXNPKGPrmwtalWKXnd9wvy75PB_Mpo50kV6og64WZlOq0Zq5MabJoFsZOrCE/exec';
   const API_TOKEN = 'ddc8394b-7d80-489e-8ba1-c665d78ded3b';
-  const VERSAO_SCRIPT = '2.0.0-teste.6';
+  const VERSAO_SCRIPT = '2.0.0-teste.8';
 
   // ===== ESPELHO NA PLANILHA OFICIAL (até o dia 30) =====
   // Cada registro feito pelo formulário vai para a planilha de TESTE (completa, colunas L–P)
@@ -728,7 +728,9 @@
       const desc = descDoTipo(tipoEl.value);
       dicaEl.textContent = desc || 'Escolha um tipo para ver o que ele significa.';
       dicaEl.classList.toggle('rt-dica-vazia', !desc);
-      const r = respDoTipo(tipoEl.value);
+      let r = respDoTipo(tipoEl.value);
+      const tecV = (document.getElementById('rt-tecnico') || {}).value || '';
+      if (/\(([^)]+)\)\s*$/.test(tecV) && (tipoEl.value === 'Wifi-Pro' || tipoEl.value === 'Chip')) r = 'Relacionamento';
       tagEl.innerHTML = r ? `<span class="rt-resp ${r === 'Relacionamento' ? 'rt-resp-sup' : 'rt-resp-tec'}">Retrabalho ${escaparHtml(r)}</span>` : '';
     };
     tipoEl.addEventListener('change', mostrarTipo);
@@ -744,7 +746,7 @@
       const tec = document.getElementById('rt-tecnico');
       const info = document.getElementById('rt-tecnico-info');
       if (api.cliente && !cli.value.trim()) { cli.value = api.cliente; campoFalha('cliente', true); }
-      if (api.tecnico && !tec.value.trim()) tec.value = api.tecnico;
+      if (api.tecnico && !tec.value.trim()) { tec.value = api.tecnico; tipoEl.dispatchEvent(new Event('change')); }
       tec.placeholder = 'Nome do técnico (se houver)';
       info.textContent = api.tecnico ? 'Vindo do ERP (atendimento em campo)'
         : apiDoAssistente() ? 'Não achei atendimento em campo nesta OS' : 'Assistente de Chamado desligado: preencha se souber';
@@ -826,7 +828,7 @@
         marcarEnviado(protocolo, tipo);
         const partes = [];
         if (vaiOficial) partes.push(oficial.dup ? `oficial já tinha (${oficial.id})` : `oficial ${oficial.id}`);
-        partes.push(okTeste ? (teste.dup ? `teste já tinha (${teste.id})` : `teste ${teste.id}`) : 'teste FALHOU');
+        partes.push(okTeste ? (teste.dup ? `teste já tinha ${tipo} neste protocolo (${teste.id})` : `teste ${teste.id}`) : 'teste FALHOU');
         mostrarToast(`✅ Registrado${teste.resp ? ' (Retrabalho ' + teste.resp + ')' : ''}: ${partes.join(' · ')}`, okTeste ? 'ok' : 'info');
         document.dispatchEvent(new CustomEvent('osir:retrabalho-enviado', { detail: JSON.stringify({ protocolo, tipo, id: teste.id || (oficial && oficial.id), pendencia: payload.pendencia }) }));
         fecharModal();
@@ -855,7 +857,7 @@
     })
       .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
       .then(resp => resp && resp.success
-        ? { ok: true, dup: !!resp.duplicado, id: resp.id, resp: resp.responsavel || '' }
+        ? { ok: true, dup: !!resp.duplicado, vinc: !!resp.vinculado, id: resp.id, resp: resp.responsavel || '', msgDup: resp.message || '' }
         : { ok: false, msg: (resp && resp.message) || 'erro desconhecido' })
       .catch(err => {
         console.error('[Retrabalho] Erro no envio para', url, err);
@@ -935,10 +937,12 @@
         ESPELHAR_OFICIAL && ESPELHAR_PENDENCIA_AUTO ? postar(API_URL_OFICIAL, payload) : Promise.resolve(null)
       ]);
       if (o && !o.ok) mostrarToast('⚠ Pendência não foi para a planilha OFICIAL: ' + o.msg, 'erro');
-      const resp = t.ok ? { success: true, duplicado: t.dup, id: t.id, responsavel: t.resp } : { success: false, message: t.msg };
+      const resp = t.ok ? { success: true, duplicado: t.dup, vinculado: t.vinc, id: t.id, responsavel: t.resp } : { success: false, message: t.msg };
       if (resp && resp.success) {
         marcarEnviado(payload.protocolo, payload.tipo);
-        mostrarToast(resp.duplicado
+        mostrarToast(resp.vinculado
+          ? `ℹ Este protocolo já tinha retrabalho de ${payload.tipo} (${resp.id}): a pendência ${pend} foi ligada a ele, sem duplicar`
+          : resp.duplicado
           ? `ℹ Pendência ${pend} já estava registrada (${resp.id})`
           : `✅ Pendência ${pend} registrada como Retrabalho ${resp.responsavel || ''} (${resp.id})`, resp.duplicado ? 'info' : 'ok');
         document.dispatchEvent(new CustomEvent('osir:retrabalho-enviado', { detail: JSON.stringify({ protocolo: payload.protocolo, tipo: payload.tipo, id: resp.id, pendencia: pend, auto: true }) }));
