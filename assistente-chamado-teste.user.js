@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Osir - Assistente de Chamado TESTE
 // @namespace    http://tampermonkey.net/
-// @version      3.8.0-teste.15
+// @version      3.8.0-teste.16
 // @description  Alertas de serviços da OS, auditor de estoque e trava antes de finalizar
 // @author       Alisson Guerreiro
 // @homepage     https://github.com/AlissonGuerreiro/meus-scripts
@@ -221,7 +221,7 @@
 
     // ============ CONFIG (pode mexer aqui) ============
     const CFG = {
-        VERSAO: '3.8.0-teste.15',
+        VERSAO: '3.8.0-teste.16',
         CICLO: 1500,            // de quanto em quanto tempo confere a tela (ms)
         DEBUG: false,           // true = mostra mensagens no console
 
@@ -1386,6 +1386,13 @@
         if (i.semRt) return null;
         const tipo = CFG.TIPO_POR_AVISO[i.id];
         if (!tipo) return null;
+        if (i.terceira) {
+            return {
+                tipo,
+                relato: `OS enviada para terceirizada (${i.terceira}) com ${NOME_SERVICO[i.id]} no pedido. A terceira não faz esse serviço: precisa de retorno com técnico da casa.`,
+                motivo: `${NOME_SERVICO[i.id]} com terceirizada (${i.terceira}): conta como Retrabalho Relacionamento, não do técnico`
+            };
+        }
         const RELATOS = {
             wifiPro: 'Wi-Fi Pro contratado, mas não foi instalado (mesh não feito).',
             wifiEnterprise: 'Wi-Fi Enterprise não instalado conforme o pedido (ONU > RB > EAPs).',
@@ -1799,11 +1806,12 @@
         const v = visitaAtual();
         estadoOS.itens = estadoOS.itensBrutos.filter(i => ok.indexOf(i.id) === -1).map(i => {
             if (!(v && v.terceira && CFG.SERVICOS_QUE_TERCEIRA_NAO_FAZ.indexOf(i.id) !== -1)) return i;
-            // terceirizada não faz: não é retrabalho do técnico, é RETORNO para a casa
+            // terceirizada não faz: abrir RETORNO para a casa; o retrabalho é de RELACIONAMENTO
+            // (quem mandou a OS para a terceira sem ver o serviço)
             return Object.assign({}, i, {
-                semRt: true,
+                terceira: v.empresa || 'TERCEIRIZADA',
                 curto: `${NOME_SERVICO[i.id]}: ABRIR RETORNO`,
-                label: `${NOME_SERVICO[i.id]}: ${v.empresa || 'TERCEIRIZADA'} NÃO FAZ — ABRIR RETORNO PARA TÉCNICO DA CASA`
+                label: `${NOME_SERVICO[i.id]}: ${v.empresa || 'TERCEIRIZADA'} NÃO FAZ — ABRIR RETORNO PARA TÉCNICO DA CASA (conta como Relacionamento)`
             });
         });
     }
