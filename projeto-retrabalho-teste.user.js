@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Projeto Retrabalho TESTE
 // @namespace    https://erp.osirnet.com.br/
-// @version      2.0.0-teste.8
+// @version      2.0.0-teste.10
 // @description  [TESTE] Registrar retrabalhos no ERP Osirnet (Técnico x Relacionamento)
 // @author       Alisson Guerreiro
 // @match        https://erp.osirnet.com.br/ui/*
@@ -32,6 +32,8 @@
     (evento "osir:registrar-retrabalho-auto"), grava DIRETO na planilha, sem formulário.
     O servidor não grava a mesma pendência duas vezes (coluna P).
     Se faltar algum dado obrigatório, abre o formulário preenchido.
+  - teste.10: tipos de terceira renomeados para "Chip COP" / "Wifi-Pro COP" (Relacionamento).
+    Na planilha OFICIAL eles vão como "Chip" / "Wifi-Pro" (ela não conhece os novos).
 */
 
 (function () {
@@ -44,7 +46,7 @@
   // ============================================================
   const API_URL = 'https://script.google.com/macros/s/AKfycbxmBVTRZXNPKGPrmwtalWKXnd9wvy75PB_Mpo50kV6og64WZlOq0Zq5MabJoFsZOrCE/exec';
   const API_TOKEN = 'ddc8394b-7d80-489e-8ba1-c665d78ded3b';
-  const VERSAO_SCRIPT = '2.0.0-teste.8';
+  const VERSAO_SCRIPT = '2.0.0-teste.10';
 
   // ===== ESPELHO NA PLANILHA OFICIAL (até o dia 30) =====
   // Cada registro feito pelo formulário vai para a planilha de TESTE (completa, colunas L–P)
@@ -56,6 +58,12 @@
   // (hoje pendência não conta no indicador).
   // Mude para true se a gestão quiser que conte já.
   const ESPELHAR_PENDENCIA_AUTO = false;
+  // A planilha OFICIAL (v1) não conhece os tipos novos: recusaria o registro.
+  // Para ela vai o nome antigo (os indicadores de lá seguem como hoje).
+  const TIPO_PARA_OFICIAL = { 'Chip COP': 'Chip', 'Wifi-Pro COP': 'Wifi-Pro', 'Chip Terceira': 'Chip', 'Wifi-Pro Terceira': 'Wifi-Pro' };
+  function payloadOficial(p) {
+    return TIPO_PARA_OFICIAL[p.tipo] ? Object.assign({}, p, { tipo: TIPO_PARA_OFICIAL[p.tipo] }) : p;
+  }
 
   // Usada só se o servidor não responder E não houver lista guardada.
   // A lista oficial fica no Code.gs (TIPOS).
@@ -69,6 +77,8 @@
     { nome: 'Técnico',              resp: 'Técnico', desc: 'Técnico com dificuldade em algum procedimento básico.' },
     { nome: 'Terceiros',            resp: 'Técnico', desc: 'Problema gerado pela terceirizada.' },
     { nome: 'Suporte',              resp: 'Relacionamento', desc: 'Suporte abriu OS sem necessidade (ex.: cliente com bloqueio) ou deletou equipamento para arrumar LOS, etc.' },
+    { nome: 'Chip COP',             resp: 'Relacionamento', desc: 'OS com chip Osirmóvel foi agendada e enviada para terceirizada (que não leva chip). Culpa de quem agendou/encaminhou.' },
+    { nome: 'Wifi-Pro COP',         resp: 'Relacionamento', desc: 'OS com Wi-Fi Pro / Enterprise foi agendada e enviada para terceirizada (que não faz). Culpa de quem agendou/encaminhou.' },
     { nome: 'Etiqueta',             resp: 'Relacionamento', desc: 'Etiquetas abertas erradas, ou para contratos sem conexão.' }
   ];
 
@@ -728,6 +738,7 @@
       const desc = descDoTipo(tipoEl.value);
       dicaEl.textContent = desc || 'Escolha um tipo para ver o que ele significa.';
       dicaEl.classList.toggle('rt-dica-vazia', !desc);
+      // igual ao servidor: Chip/Wifi-Pro com técnico de terceira "(EMPRESA)" conta como Relacionamento
       let r = respDoTipo(tipoEl.value);
       const tecV = (document.getElementById('rt-tecnico') || {}).value || '';
       if (/\(([^)]+)\)\s*$/.test(tecV) && (tipoEl.value === 'Wifi-Pro' || tipoEl.value === 'Chip')) r = 'Relacionamento';
@@ -820,7 +831,7 @@
     const vaiOficial = ESPELHAR_OFICIAL && !(payload.sugestao === 'pendencia' && !ESPELHAR_PENDENCIA_AUTO);
     Promise.all([
       postar(API_URL, payload),
-      vaiOficial ? postar(API_URL_OFICIAL, payload) : Promise.resolve(null)
+      vaiOficial ? postar(API_URL_OFICIAL, payloadOficial(payload)) : Promise.resolve(null)
     ]).then(([teste, oficial]) => {
       // O que manda é a OFICIAL (alimenta o indicador). Teste é para conferir o script novo.
       const okTeste = teste.ok, okOficial = !vaiOficial || (oficial && oficial.ok);
@@ -934,7 +945,7 @@
       }
       const [t, o] = await Promise.all([
         postar(API_URL, payload),
-        ESPELHAR_OFICIAL && ESPELHAR_PENDENCIA_AUTO ? postar(API_URL_OFICIAL, payload) : Promise.resolve(null)
+        ESPELHAR_OFICIAL && ESPELHAR_PENDENCIA_AUTO ? postar(API_URL_OFICIAL, payloadOficial(payload)) : Promise.resolve(null)
       ]);
       if (o && !o.ok) mostrarToast('⚠ Pendência não foi para a planilha OFICIAL: ' + o.msg, 'erro');
       const resp = t.ok ? { success: true, duplicado: t.dup, vinculado: t.vinc, id: t.id, responsavel: t.resp } : { success: false, message: t.msg };

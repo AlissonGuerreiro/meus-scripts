@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Osir - Assistente de Chamado TESTE
 // @namespace    http://tampermonkey.net/
-// @version      3.8.0-teste.16
+// @version      3.8.0-teste.17
 // @description  Alertas de serviços da OS, auditor de estoque e trava antes de finalizar
 // @author       Alisson Guerreiro
 // @homepage     https://github.com/AlissonGuerreiro/meus-scripts
@@ -15,6 +15,12 @@
 
 /*
   VERSÃO DE TESTE (atualiza pelo GitHub, arquivo separado do oficial). Desligue o Assistente oficial enquanto testa.
+
+  O QUE MUDOU NA 3.8 teste.17
+  - TERCEIRA (chip / Wi-Fi Pro / Enterprise): o card agora GERA o retrabalho certo,
+    como Retrabalho RELACIONAMENTO -> tipos "Chip COP" / "Wifi-Pro COP"
+    (antes mandava como "Chip"/"Wifi-Pro" e dependia da regra do servidor).
+    Chip da CASA continua "Chip" (Técnico). Precisa do Projeto Retrabalho 2.0 teste.10+ ligado.
 
   O QUE MUDOU NA 3.8
   - BOTÃO "📝 RETRABALHO" em cada aviso (materiais, Wi-Fi Pro, chip, fone...).
@@ -221,7 +227,7 @@
 
     // ============ CONFIG (pode mexer aqui) ============
     const CFG = {
-        VERSAO: '3.8.0-teste.16',
+        VERSAO: '3.8.0-teste.17',
         CICLO: 1500,            // de quanto em quanto tempo confere a tela (ms)
         DEBUG: false,           // true = mostra mensagens no console
 
@@ -307,12 +313,21 @@
         // (um controlador + o mesh/pró como agente).
         PALAVRAS_ONU_ROTEADOR: ['F6201B'],
         // Qual tipo de retrabalho cada aviso sugere (nome igual ao da planilha)
+        //   da CASA = culpa do técnico (Retrabalho Técnico)
         TIPO_POR_AVISO: {
             wifiPro: 'Wifi-Pro',
             wifiEnterprise: 'Instalação',
             osirFone: 'Instalação',
             osirMovel: 'Chip',
             estoque: 'Material/Equipamento'
+        },
+        // Quando é TERCEIRA (ARCA, Aliança, VH...): ela não faz esses serviços.
+        // A culpa é de quem agendou/encaminhou -> Retrabalho RELACIONAMENTO (tipos "... COP").
+        TIPO_POR_AVISO_TERCEIRA: {
+            wifiPro: 'Wifi-Pro COP',
+            wifiEnterprise: 'Wifi-Pro COP',
+            osirMovel: 'Chip COP',
+            osirFone: 'Suporte'
         }
     };
 
@@ -1387,10 +1402,11 @@
         const tipo = CFG.TIPO_POR_AVISO[i.id];
         if (!tipo) return null;
         if (i.terceira) {
+            const tipoTerc = (CFG.TIPO_POR_AVISO_TERCEIRA && CFG.TIPO_POR_AVISO_TERCEIRA[i.id]) || tipo;
             return {
-                tipo,
+                tipo: tipoTerc,
                 relato: `OS enviada para terceirizada (${i.terceira}) com ${NOME_SERVICO[i.id]} no pedido. A terceira não faz esse serviço: precisa de retorno com técnico da casa.`,
-                motivo: `${NOME_SERVICO[i.id]} com terceirizada (${i.terceira}): conta como Retrabalho Relacionamento, não do técnico`
+                motivo: `${NOME_SERVICO[i.id]} com terceirizada (${i.terceira}): conta como Retrabalho Relacionamento (${tipoTerc}), não do técnico`
             };
         }
         const RELATOS = {
