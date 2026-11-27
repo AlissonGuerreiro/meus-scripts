@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Osir - Assistente de Chamado TESTE
 // @namespace    http://tampermonkey.net/
-// @version      3.8.0-teste.17
+// @version      3.8.0-teste.18
 // @description  Alertas de serviços da OS, auditor de estoque e trava antes de finalizar
 // @author       Alisson Guerreiro
 // @homepage     https://github.com/AlissonGuerreiro/meus-scripts
@@ -15,6 +15,22 @@
 
 /*
   VERSÃO DE TESTE (atualiza pelo GitHub, arquivo separado do oficial). Desligue o Assistente oficial enquanto testa.
+
+  O QUE MUDOU NA 3.8 teste.18
+  - CORRIGIDO: cartão de WI-FI ENTERPRISE aparecendo sem o cliente ter contratado.
+      • Desligada a busca "por aproximação" do Enterprise (com 2 letras de folga ela
+        achava Enterprise em texto que não era). Variações de escrita agora ficam na regra.
+      • Campo do modelo que NÃO foi contratado agora é ignorado também quando está:
+        "( ) Sim ( ) Não" (nada marcado), "Serviço: Não" ou "Serviço ( )" (caixinha vazia no fim).
+  - CORRIGIDO: "TROCA SEM PATRIMÔNIO NOVO" aparecendo quando o técnico trocou CONECTOR
+    ("trocado os conectores ... equipamento todos ok"). Agora só conta troca quando o
+    equipamento vem logo depois do verbo ("troquei o roteador", "ONU foi trocada").
+    O texto do cartão diz "nenhum equipamento NOVO" e quantos já estavam na carga.
+  - Novo no console: TM_DEBUG.porque('wifiEnterprise') -> mostra o trecho da OS que gerou o aviso.
+  - TERCEIRA: o script agora lê também o PLANO do contrato (ex.: "... + 1 Wi-fi Pro").
+    Troca de endereço (ou ativação) feita por terceira em cliente com Wi-Fi Pro / Enterprise /
+    chip / fone no plano -> cartão "ABRIR RETORNO" + retrabalho Relacionamento ("Wifi-Pro COP"...),
+    mesmo que a demanda esteja marcada "Não" por engano.
 
   O QUE MUDOU NA 3.8 teste.17
   - TERCEIRA (chip / Wi-Fi Pro / Enterprise): o card agora GERA o retrabalho certo,
@@ -227,7 +243,7 @@
 
     // ============ CONFIG (pode mexer aqui) ============
     const CFG = {
-        VERSAO: '3.8.0-teste.17',
+        VERSAO: '3.8.0-teste.18',
         CICLO: 1500,            // de quanto em quanto tempo confere a tela (ms)
         DEBUG: false,           // true = mostra mensagens no console
 
@@ -457,14 +473,16 @@
         // "pro" seguido de enterprise NÃO é Wi-Fi Pro simples
         wifiPro: new RegExp(`(?<![a-z])${WIFI}\\s*(profissional|pro)(?![a-z])(?!\\s*(ent[ea]r?pr|empresarial|business))`),
         // aceita "wifi enterprise" e "wifi pro enterprise"
-        wifiEnterprise: new RegExp(`(?<![a-z])${WIFI}\\s*(pro\\s*|profissional\\s*)?(ent[ea]r?pr[iy][sz][ec]|empresarial|business)`),
+        // (enterprise, enterprice, entreprise, enterpise, entrprise...)
+        wifiEnterprise: new RegExp(`(?<![a-z])${WIFI}\\s*(pro\\s*|profissional\\s*)?(ent(?:er|re|ar|ra|e|r)?pr?[iy][szc]e?|empresarial|business)`),
         osirFone: new RegExp(`(?<![a-z])${OSIR}\\s*(fone|phone|telefon[a-z]*|fixa)|telefonia\\s+(fixa|osir)|telefonia\\s+x\\s+sim`),
         osirMovel: new RegExp(`(?<![a-z])${OSIR}\\s*(m[oae]v[ei]l|mobile|chip|celular|cel)(?![a-z])|chip\\s*${OSIR}`)
     };
 
     const ALVOS_FUZZY = {
         wifiPro: { alvo: 'wifipro', max: 1 },
-        wifiEnterprise: { alvo: 'wifienterprise', max: 2 },
+        // max -1 = sem aproximação (dava cartão falso de Enterprise)
+        wifiEnterprise: { alvo: 'wifienterprise', max: -1 },
         osirFone: { alvo: 'osirfone', max: 1 },
         osirMovel: { alvo: 'osirmovel', max: 1 }
     };
@@ -481,9 +499,15 @@
         return false;
     }
 
+    // Tira do texto os serviços do modelo que NÃO foram contratados
     function removerCamposNao(txt) {
-        return txt.replace(
-            /[a-z0-9 \/\-]{0,40}:\s*[\(\[]\s*[\)\]]\s*sim\s*[\(\[]\s*x\s*[\)\]]\s*nao/g, ' ');
+        return txt
+            // "Serviço: ( ) Sim (X) Não"  e  "Serviço: ( ) Sim ( ) Não" (nada marcado)
+            .replace(/[a-z0-9 \/\-]{0,40}:?\s*[\(\[]\s*[\)\]]\s*sim\s*[\(\[]\s*x?\s*[\)\]]\s*nao/g, ' ')
+            // "Serviço: Não" / "Serviço: N/A"
+            .replace(/[a-z0-9 \/\-]{0,40}:\s*(nao|n\/a)(?![a-z])/g, ' ')
+            // "Serviço ( )" / "Serviço: [ ]" (caixinha vazia no fim)
+            .replace(/[a-z0-9\/\-][a-z0-9 \/\-]{0,24}:?\s*[\(\[]\s*[\)\]](?!\s*sim)/g, ' ');
     }
 
     function cobrancaOitentaMarcada(txt) {
@@ -679,6 +703,7 @@
 
         estadoOS = { chave, itens, nivel, regra };
         estadoOS.itensBrutos = itens;
+        estadoOS.ehTroca = nivel !== 'nada' && (cat.includes('troca') || cat.includes('mudanca')) && cat.includes('ender');
         log('OS lida:', { tipoSolic, categoria, nivel, regra, itens: itens.map(i => i.id) });
     }
 
@@ -1217,7 +1242,10 @@
         return /^g/i.test(m[2] || '') ? Math.round(v * 1000) : Math.round(v);
     }
 
-    const RE_TROCA = /\b(troc\w*|troq\w*|substitu\w*)\b[^.\n]{0,40}\b(roteador|onu|ont|equipamento|modem|aparelho|router)\b|\b(roteador|onu|ont|equipamento|modem)\b[^.\n]{0,25}\b(trocad\w*|substitu\w*)/;
+    // Troca de EQUIPAMENTO: entre o verbo e o equipamento só pode ter artigo/preposição
+    // ("troquei o roteador", "troca da ONU", "equipamento foi trocado").
+    // Antes pegava "trocado os conectores ... equipamento todos ok" (troca de conector, não de equipamento).
+    const RE_TROCA = /\b(troc\w*|troq\w*|substitu\w*)\s+(?:(?:o|a|os|as|de|do|da|dos|das|um|uma|seu|sua|pelo|pela|no|na|por)\s+){0,2}(roteador\w*|onu|ont|equipamento\w*|modem|aparelho|router)\b|\b(roteador\w*|onu|ont|equipamento\w*|modem)\s+(?:antig[oa]s?\s+|foi\s+|foram\s+|era\s+|precisou\s+ser\s+|ser\s+)?(trocad\w*|substitu\w*)/;
     const RE_SO_TROCA = /\b(so|apenas|somente)\b[^.\n]{0,15}\b(troc\w*|troq\w*|substitu\w*)/;
     const RE_CABO = /\b(drop|cabo|fibra|lanc\w*|repass\w*|metragem|metros)\b/;
 
@@ -1288,7 +1316,7 @@
         // 2) Troca sem patrimônio novo
         if (troca && novos && novos.length === 0) {
             out.push(sug('trocaSemPat', 'Material/Equipamento', 'TROCA SEM PATRIMÔNIO NOVO',
-                `Relato fala em troca de equipamento, mas nenhum patrimônio foi alocado na data da visita (${visita.data.split('-').reverse().join('/')})${tec}`,
+                `Relato fala em troca de equipamento, mas nenhum equipamento NOVO foi alocado em ${visita.data.split('-').reverse().join('/')} (a carga tem ${patrimonios.filter(p => p.ativo).length} equipamento(s) de antes)${tec}`,
                 'Relato informa troca de equipamento, mas o equipamento novo não foi alocado na carga do cliente.'));
         }
 
@@ -1405,7 +1433,9 @@
             const tipoTerc = (CFG.TIPO_POR_AVISO_TERCEIRA && CFG.TIPO_POR_AVISO_TERCEIRA[i.id]) || tipo;
             return {
                 tipo: tipoTerc,
-                relato: `OS enviada para terceirizada (${i.terceira}) com ${NOME_SERVICO[i.id]} no pedido. A terceira não faz esse serviço: precisa de retorno com técnico da casa.`,
+                relato: i.ehTroca
+                    ? `Troca de endereço enviada para terceirizada (${i.terceira}), mas o cliente tem ${NOME_SERVICO[i.id]}${i.doPlano ? ' no plano' : ''}. A terceira não faz esse serviço: precisa de retorno com técnico da casa.`
+                    : `OS enviada para terceirizada (${i.terceira}) com ${NOME_SERVICO[i.id]}${i.doPlano ? ' no plano do cliente' : ' no pedido'}. A terceira não faz esse serviço: precisa de retorno com técnico da casa.`,
                 motivo: `${NOME_SERVICO[i.id]} com terceirizada (${i.terceira}): conta como Retrabalho Relacionamento (${tipoTerc}), não do técnico`
             };
         }
@@ -1816,18 +1846,52 @@
         return c && c.dados && c.dados.visita;
     }
     const NOME_SERVICO = { wifiPro: 'WI-FI PRO', wifiEnterprise: 'WI-FI ENTERPRISE', osirMovel: 'CHIP', osirFone: 'TELEFONIA' };
+    // Serviços que estão no PLANO do contrato (ex.: "Plano Multi 600 x 250 + 1 Wi-fi Pro").
+    // O plano é mais confiável que a demanda (o relacionamento às vezes marca "Não" errado).
+    function servicosNoPlano(plano) {
+        if (!plano) return [];
+        // "Wi-fi ProRua Alberto..." -> "Wi-fi Pro Rua Alberto..." (o endereço vem grudado)
+        const t = limparParaBusca(String(plano).replace(/([a-zà-ú])([A-ZÀ-Ú])/g, '$1 $2'));
+        const ehEnt = PADROES_SERVICO.wifiEnterprise.test(t);
+        return SERVICOS.filter(s => {
+            if (s.id === 'wifiEnterprise') return ehEnt;
+            if (s.id === 'wifiPro' && ehEnt) return false;
+            return PADROES_SERVICO[s.id].test(t);
+        });
+    }
+    function planoAtual() {
+        const c = conferenciaAPI[osNaTela()];
+        return (c && c.dados && c.dados.plano) || '';
+    }
+
     function aplicarRelatoNosServicos() {
         if (!estadoOS.itensBrutos) return;
         const ok = servicosConfirmadosNoRelato();
         const v = visitaAtual();
-        estadoOS.itens = estadoOS.itensBrutos.filter(i => ok.indexOf(i.id) === -1).map(i => {
+        let brutos = estadoOS.itensBrutos;
+
+        // TERCEIRA na OS: confere também o PLANO (troca de endereço e ativação/instalação).
+        // Ex.: troca de endereço de cliente com Wi-Fi Pro enviada para a VH -> abrir retorno.
+        if (v && v.terceira && (estadoOS.ehTroca || estadoOS.nivel === 'tudo')) {
+            const jaTem = new Set(brutos.map(i => i.id));
+            const doPlano = servicosNoPlano(planoAtual())
+                .filter(s => CFG.SERVICOS_QUE_TERCEIRA_NAO_FAZ.indexOf(s.id) !== -1)
+                .filter(s => !jaTem.has(s.id) && !(s.id === 'wifiPro' && jaTem.has('wifiEnterprise')) && !(s.id === 'wifiEnterprise' && jaTem.has('wifiPro')))
+                .map(s => Object.assign({}, s, { doPlano: true }));
+            if (doPlano.length) brutos = brutos.concat(doPlano);
+        }
+
+        estadoOS.itens = brutos.filter(i => ok.indexOf(i.id) === -1).map(i => {
             if (!(v && v.terceira && CFG.SERVICOS_QUE_TERCEIRA_NAO_FAZ.indexOf(i.id) !== -1)) return i;
             // terceirizada não faz: abrir RETORNO para a casa; o retrabalho é de RELACIONAMENTO
             // (quem mandou a OS para a terceira sem ver o serviço)
+            const empresa = v.empresa || 'TERCEIRIZADA';
+            const onde = i.doPlano ? ' (está no PLANO do cliente)' : '';
             return Object.assign({}, i, {
-                terceira: v.empresa || 'TERCEIRIZADA',
+                terceira: empresa,
+                ehTroca: !!estadoOS.ehTroca,
                 curto: `${NOME_SERVICO[i.id]}: ABRIR RETORNO`,
-                label: `${NOME_SERVICO[i.id]}: ${v.empresa || 'TERCEIRIZADA'} NÃO FAZ — ABRIR RETORNO PARA TÉCNICO DA CASA (conta como Relacionamento)`
+                label: `${NOME_SERVICO[i.id]}${onde}: ${empresa} NÃO FAZ — ABRIR RETORNO PARA TÉCNICO DA CASA (conta como Relacionamento)`
             });
         });
     }
@@ -1888,6 +1952,16 @@
             const pag = p && Object.values(p)[0];
             const d = pag && pag.json && pag.json.response && pag.json.response.data;
             return d && d[0] ? achatar(d[0]) : 'Abra Produtos e Serviços > Patrimônios Alocados primeiro.';
+        },
+        // Mostra POR QUE um serviço foi detectado (o trecho da OS que deu o aviso)
+        porque(servico = 'wifiEnterprise') {
+            const txt = removerCamposNao(normalizarTexto(removerCaixasVazias(ultimoTexto))
+                .replace(/https?:\/\/\S+/gi, '').replace(/\S+@\S+\.\S+/gi, ''));
+            const t = limparParaBusca(txt);
+            const rx = PADROES_SERVICO[servico];
+            const m = rx && t.match(rx);
+            if (m) return 'Achou pelo texto: "...' + t.slice(Math.max(0, m.index - 80), m.index + m[0].length + 80) + '..."';
+            return detectarServico(txt, servico) ? 'Achou por APROXIMAÇÃO (letras parecidas)' : 'Não achou ' + servico + ' nesta OS';
         },
         testarSinal: lerSinalFinal,
         velocidadePlano,
